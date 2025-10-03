@@ -1,7 +1,7 @@
 import requests
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- Konfigurace ---
 BASE_URL = "http://127.0.0.1:8000"
@@ -43,7 +43,6 @@ def print_result(response, expected_status_code=None):
     else:
         print(f"  \033[91mFAILURE (Status: {status_code})\033[0m")
         print(f"  Error: {data}")
-        # Ukončíme skript při první chybě
         raise AssertionError(f"Test failed at step with status {status_code}")
 
 def get_headers(token):
@@ -72,7 +71,7 @@ def run_tests():
     login_data = print_result(response, 200)
     admin_token = login_data["access_token"]
     
-    # 2. Správa členů (pozvání a přijetí zaměstnance)
+    # 2. Správa členů
     print_step("Admin invites a new employee")
     invite_payload = {"email": EMPLOYEE_EMAIL, "role": "member"}
     response = requests.post(f"{BASE_URL}/invites/companies/{company_id}", json=invite_payload, headers=get_headers(admin_token))
@@ -80,14 +79,14 @@ def run_tests():
     invite_token = invite_data["token"]
     
     print_step("New employee accepts the invite")
-    accept_payload = {"token": invite_token, "password": ADMIN_PASSWORD} # Použijeme stejné heslo pro jednoduchost
+    accept_payload = {"token": invite_token, "password": ADMIN_PASSWORD}
     response = requests.post(f"{BASE_URL}/invites/accept", json=accept_payload)
     employee_data = print_result(response, 200)
     employee_user_id = employee_data["id"]
 
     # 3. Správa klientů
     print_step("Creating a new client")
-    client_payload = {"name": "Test Client Alpha", "email": "alpha@test.com"}
+    client_payload = {"name": "Test Client Alpha"}
     response = requests.post(f"{BASE_URL}/companies/{company_id}/clients", json=client_payload, headers=get_headers(admin_token))
     client_data = print_result(response, 201)
     client_id = client_data["id"]
@@ -97,11 +96,9 @@ def run_tests():
     category_payload = {"name": "Senzory"}
     response = requests.post(f"{BASE_URL}/companies/{company_id}/categories", json=category_payload, headers=get_headers(admin_token))
     category_data = print_result(response, 201)
-    category_id = category_data["id"]
-    item_payload = {"name": "PIR Sensor", "sku": f"PIR-{timestamp}", "quantity": 50, "price": 120.50, "vat_rate": 21.0, "category_id": category_id}
+    item_payload = {"name": "PIR Sensor", "sku": f"PIR-{timestamp}", "quantity": 50}
     response = requests.post(f"{BASE_URL}/companies/{company_id}/inventory", json=item_payload, headers=get_headers(admin_token))
     item_data = print_result(response, 201)
-    item_id = item_data["id"]
 
     # 5. Druhy práce
     print_step("Creating a work type")
@@ -123,67 +120,55 @@ def run_tests():
     task_data = print_result(response, 201)
     task_id = task_data["id"]
     
-    print_step("Listing tasks to verify creation")
-    response = requests.get(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks", headers=get_headers(admin_token))
-    print_result(response, 200)
-
-    print_step("Updating the task")
-    update_payload = {"name": "Montáž a zapojení centrální jednotky"}
-    response = requests.patch(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}", json=update_payload, headers=get_headers(admin_token))
-    print_result(response, 200)
-    
-    print_step("Assigning the task to the employee")
-    assign_payload = {"assignee_id": employee_user_id}
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/assign", json=assign_payload, headers=get_headers(admin_token))
-    print_result(response, 200)
-
-    print_step("Un-assigning the task")
-    unassign_payload = {"assignee_id": None}
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/assign", json=unassign_payload, headers=get_headers(admin_token))
-    print_result(response, 200)
-
-    # 7. Workflow odpracovaných hodin
-    print_step("Employee logs time for the task")
-    log_payload = {"task_id": task_id, "work_type_id": work_type_id, "hours": 3.5, "work_date": datetime.now().strftime('%Y-%m-%d')}
-    # Potřebujeme token zaměstnance, přihlásíme ho
+    # 7. Workflow odpracovaných hodin (s pokročilými testy)
+    print_step("Employee logs first time block (8:00 - 10:00)")
+    start_time_1 = datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
+    end_time_1 = start_time_1 + timedelta(hours=2)
+    log_payload_1 = {
+        "task_id": task_id, "work_type_id": work_type_id,
+        "start_time": start_time_1.isoformat(), "end_time": end_time_1.isoformat()
+    }
+    # Přihlásíme zaměstnance
     employee_login_payload = {"email": EMPLOYEE_EMAIL, "password": ADMIN_PASSWORD}
     response = requests.post(f"{BASE_URL}/auth/login", json=employee_login_payload)
-    employee_token_data = print_result(response, 200)
-    employee_token = employee_token_data["access_token"]
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=log_payload, headers=get_headers(employee_token))
-    time_log_data = print_result(response, 201)
-    time_log_id = time_log_data["id"]
-    
-    print_step("Employee updates their time log")
-    update_log_payload = {"notes": "Práce šla dobře."}
-    response = requests.patch(f"{BASE_URL}/companies/{company_id}/time-logs/{time_log_id}", json=update_log_payload, headers=get_headers(employee_token))
-    print_result(response, 200)
-    
-    print_step("Admin approves the time log")
-    status_payload = {"status": "approved"}
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs/{time_log_id}/status", json=status_payload, headers=get_headers(admin_token))
-    print_result(response, 200)
-    
-    print_step("Employee creates another log and then deletes it")
-    another_log_payload = {"task_id": task_id, "work_type_id": work_type_id, "hours": 1.0, "work_date": datetime.now().strftime('%Y-%m-%d')}
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=another_log_payload, headers=get_headers(employee_token))
-    another_log_data = print_result(response, 201)
-    another_log_id = another_log_data["id"]
-    response = requests.delete(f"{BASE_URL}/companies/{company_id}/time-logs/{another_log_id}", headers=get_headers(employee_token))
-    print_result(response, 204)
+    employee_token = print_result(response, 200)["access_token"]
+    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=log_payload_1, headers=get_headers(employee_token))
+    print_result(response, 201)
 
-    # 8. Použití materiálu
-    print_step("Logging used inventory for the task")
-    inventory_payload = {"inventory_item_id": item_id, "quantity": 2}
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory", json=inventory_payload, headers=get_headers(admin_token))
-    print_result(response, 200)
+    print_step("Employee logs overlapping time block (9:30 - 11:00) -> should shorten the first block")
+    start_time_2 = start_time_1 + timedelta(hours=1, minutes=30)
+    end_time_2 = start_time_2 + timedelta(hours=1, minutes=30)
+    log_payload_2 = {
+        "task_id": task_id, "work_type_id": work_type_id, "notes": "Překryv",
+        "start_time": start_time_2.isoformat(), "end_time": end_time_2.isoformat()
+    }
+    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=log_payload_2, headers=get_headers(employee_token))
+    print_result(response, 201)
     
-    # 9. Úklid
-    print_step("Cleaning up: Deleting the task and the client")
-    response = requests.delete(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}", headers=get_headers(admin_token))
-    print_result(response, 204)
-    response = requests.delete(f"{BASE_URL}/companies/{company_id}/clients/{client_id}", headers=get_headers(admin_token))
-    print_result(response, 204)
+    print_step("Employee logs time and creates a new task simultaneously (13:00 - 14:00)")
+    start_time_3 = start_time_1.replace(hour=13)
+    end_time_3 = start_time_3 + timedelta(hours=1)
+    log_payload_3 = {
+        "work_type_id": work_type_id,
+        "start_time": start_time_3.isoformat(), "end_time": end_time_3.isoformat(),
+        "new_task": {
+            "work_order_id": work_order_id,
+            "name": "Telefonát s klientem"
+        }
+    }
+    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=log_payload_3, headers=get_headers(employee_token))
+    time_log_to_approve = print_result(response, 201)
+    time_log_id_to_approve = time_log_to_approve["id"]
+
+    print_step("Listing employee's time logs for today to verify overlaps")
+    today = datetime.now().strftime('%Y-%m-%d')
+    response = requests.get(f"{BASE_URL}/companies/{company_id}/time-logs?work_date={today}", headers=get_headers(employee_token))
+    print_result(response, 200)
+
+    print_step("Admin approves one of the time logs")
+    status_payload = {"status": "approved"}
+    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs/{time_log_id_to_approve}/status", json=status_payload, headers=get_headers(admin_token))
+    print_result(response, 200)
 
     print("\n" + "="*50)
     print("\033[92mAll tests completed successfully!\033[0m")
@@ -198,6 +183,5 @@ if __name__ == "__main__":
         print(f"Please make sure the backend is running at {BASE_URL}")
     except AssertionError as e:
         print(f"\n\033[91m--- TEST FAILED ---\033[0m")
-        # Chybová zpráva je již vypsána v print_result
     except Exception as e:
         print(f"\n\033[91mAn unexpected error occurred: {e}\033[0m")

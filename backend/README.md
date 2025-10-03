@@ -151,6 +151,27 @@
 | **DELETE** | **/companies/{company_id}/time-logs/{time_log_id}**        | **Umožní uživateli smazat** **svůj vlastní** **záznam, pokud je ve stavu** **pending**.                              |
 | **POST**   | **/companies/{company_id}/time-logs/{time_log_id}/status** | **(Pro adminy)** **Změní stav záznamu (např. na** **approved** **nebo** **rejected**).                           |
 
+### 3.8. Auditní Log Skladu
+
+Endpoint pro zobrazení historie všech změn ve skladu (vytvoření, úpravy, smazání položek). Přístupný pouze pro administrátory.
+
+| Metoda | Endpoint | Popis |
+|---|---|---|
+| `GET` | `/companies/{company_id}/audit-logs` | Získá seznam záznamů z historie. Výsledky jsou stránkované (`?skip=0&limit=100`). |
+
+**Dostupné filtry (Query Parametry):**
+
+Všechny filtry lze kombinovat.
+
+*   `?item_id=_int_`: Zobrazí historii pouze pro jednu konkrétní skladovou položku.
+*   `?user_id=_int_`: Zobrazí všechny akce provedené jedním konkrétním uživatelem.
+*   `?start_date=YYYY-MM-DD`: Filtruje záznamy od tohoto data včetně.
+*   `?end_date=YYYY-MM-DD`: Filtruje záznamy do tohoto data včetně.
+
+**Příklad použití:**
+`GET /companies/1/audit-logs?item_id=42&start_date=2025-10-01`
+Tento požadavek vrátí všechny pohyby na položce s ID 42, které se staly od 1. října 2025.
+
 ---
 
 ## 4. Typický postup (Workflow) pro frontend

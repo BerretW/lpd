@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.db.database import engine, Base
-from app.routers import auth, companies, clients, invites, members, inventory, categories, work_types, work_orders, tasks, time_logs
+from app.routers import auth, companies, clients, invites, members, inventory, categories, work_types, work_orders, tasks, time_logs, audit_logs # <-- PŘIDÁNÍ NOVÉHO ROUTERU
 
 Path("static/images/inventory").mkdir(parents=True, exist_ok=True)
 
@@ -47,6 +47,7 @@ app.include_router(work_types.router)
 app.include_router(work_orders.router)
 app.include_router(tasks.router)
 app.include_router(time_logs.router)
+app.include_router(audit_logs.router) # <-- PŘIDAT NOVÝ ROUTER
 
 @app.get("/healthz")
 async def health():
