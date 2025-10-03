@@ -98,12 +98,17 @@
 
 ### 3.3. Správa Úkolů (Tasks)
 
-**Úkoly jsou vždy podřízené konkrétní zakázce.**
+Úkoly jsou vždy podřízené konkrétní zakázce.
 
-| **Metoda** | **Endpoint**                                                                      | **Popis**                                                            |
-| ---------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **POST**   | **/companies/{company_id}/work-orders/{work_order_id}/tasks**                     | **Vytvoří nový úkol v rámci existující zakázky.**            |
-| **POST**   | **/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory** | **Zapíše použitý materiál ze skladu.** **Sníží stav!** |
+| Metoda | Endpoint | Popis |
+|---|---|---|
+| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/tasks` | Vytvoří nový úkol v rámci existující zakázky. |
+| `GET` | `/companies/{company_id}/work-orders/{work_order_id}/tasks` | Získá seznam všech úkolů v zakázce. |
+| `GET` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}` | Získá detail jednoho konkrétního úkolu. |
+| `PATCH` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}` | Aktualizuje název, popis nebo status úkolu. |
+| `DELETE` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}` | Smaže úkol (včetně jeho záznamů o práci a materiálu). |
+| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/assign` | Přiřadí nebo odebere zaměstnance z úkolu. |
+| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory` | Zapíše použitý materiál ze skladu. **Sníží stav!** |
 
 ### 3.4. Správa Skladu (Inventory)
 
@@ -115,6 +120,7 @@
 | **GET**    | **/companies/{company_id}/inventory/{item_id}**              | **Získá detail jedné skladové položky.**                              |
 | **PATCH**  | **/companies/{company_id}/inventory/{item_id}**              | **Upraví skladovou položku.**                                            |
 | **POST**   | **/companies/{company_id}/inventory/{item_id}/upload-image** | **Nahraje obrázek k položce (vyžaduje** **multipart/form-data**). |
+
 
 ### 3.5. Skladové Kategorie
 

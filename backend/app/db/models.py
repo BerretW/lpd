@@ -166,7 +166,6 @@ class Task(Base):
     
     work_order: Mapped["WorkOrder"] = relationship(back_populates="tasks")
     assignee: Mapped["User"] = relationship()
-    time_logs: Mapped[list["TimeLog"]] = relationship(cascade="all, delete-orphan")
     used_items: Mapped[list["UsedInventoryItem"]] = relationship(cascade="all, delete-orphan")
 
 class TimeLogStatus(str, Enum):
