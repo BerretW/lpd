@@ -20,28 +20,12 @@ async def create_category(
     _=Depends(require_company_access)
 ):
     """Vytvoří novou kategorii nebo podkategorii."""
-    try:
-        category = InventoryCategory(**payload.dict(), company_id=company_id)
-        db.add(category)
-        await db.commit()
-        await db.refresh(category)
-        return category
-    except IntegrityError as e:
-        await db.rollback()
-        # Zkontrolujeme, zda se jedná o porušení unique constraint pro název kategorie
-        if "uq_category_company_name_parent" in str(e.orig):
-            parent_text = "hlavní kategorii" if payload.parent_id is None else "podkategorii"
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Kategorie s názvem '{payload.name}' již jako {parent_text} existuje."
-            )
-        # Jiná chyba integrity - necháme ji projít jako obecnou chybu
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Chyba při vytváření kategorie."
-        )
-
-
+    category = InventoryCategory(**payload.dict(), company_id=company_id)
+    db.add(category)
+    await db.commit()
+    # OPRAVA ZDE: Explicitně řekneme, aby se načetl i vztah 'children'
+    await db.refresh(category, attribute_names=['children'])
+    return category
 
 @router.get("", response_model=List[CategoryOut])
 async def list_categories(
@@ -50,10 +34,11 @@ async def list_categories(
     _=Depends(require_company_access)
 ):
     """Vrátí stromovou strukturu všech kategorií pro danou firmu."""
+    # Tento endpoint je již v pořádku, protože používá selectinload
     stmt = (
         select(InventoryCategory)
         .where(InventoryCategory.company_id == company_id, InventoryCategory.parent_id == None)
-        .options(selectinload(InventoryCategory.children)) # Eager load pro podkategorie
+        .options(selectinload(InventoryCategory.children))
     )
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -79,8 +64,10 @@ async def update_category(
         setattr(category, key, value)
     
     await db.commit()
-    await db.refresh(category)
+    # OPRAVA ZDE: Explicitně řekneme, aby se načetl i vztah 'children'
+    await db.refresh(category, attribute_names=['children'])
     return category
+
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(

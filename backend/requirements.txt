@@ -5,7 +5,7 @@ asyncmy
 python-jose==3.3.0
 # Aktualizace passlib a přidání explicitní verze bcrypt
 passlib>=1.7.4
-bcrypt>=4.0.0
+bcrypt==3.2.0
 pydantic==2.9.2
 pydantic[email]==2.9.2
 python-multipart
