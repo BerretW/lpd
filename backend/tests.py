@@ -9,7 +9,7 @@ BASE_URL = "http://127.0.0.1:8000"
 timestamp = int(time.time())
 ADMIN_EMAIL = f"test.admin.{timestamp}@example.com"
 EMPLOYEE_EMAIL = f"test.employee.{timestamp}@example.com"
-ADMIN_PASSWORD = "TestPassword123!"
+ADMIN_PASSWORD = "1234"
 
 # Globální proměnné pro uložení stavu
 admin_token = None

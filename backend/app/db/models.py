@@ -1,3 +1,4 @@
+#db/models.py
 from datetime import datetime
 from enum import Enum
 from sqlalchemy import String, Integer, ForeignKey, DateTime, Boolean, UniqueConstraint, Enum as SAEnum, Text
@@ -40,6 +41,16 @@ class Company(Base):
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # --- NOVÁ FAKTURAČNÍ POLE ---
+    legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="Oficiální název dle rejstříku")
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ico: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True) # IČO
+    dic: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True) # DIČ
+    executive: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="Jednatel(é)")
+    bank_account: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    iban: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # --- KONEC NOVÝCH POLÍ ---
 
     members: Mapped[list["Membership"]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
@@ -112,8 +123,14 @@ class Client(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
-    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # --- NOVÁ FAKTURAČNÍ POLE ---
+    legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="Oficiální název dle rejstříku, pokud se liší")
+    contact_person: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ico: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True) # IČO
+    dic: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True) # DIČ
+    # --- KONEC NOVÝCH POLÍ ---
     
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_client_company_name"),)
 

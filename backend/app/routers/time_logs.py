@@ -9,8 +9,7 @@ from datetime import date
 from app.db.database import get_db
 from app.db.models import TimeLog, Task, WorkOrder, TimeLogStatus
 from app.schemas.time_log import TimeLogCreateIn, TimeLogOut, TimeLogUpdateIn, TimeLogStatusUpdateIn
-from app.routers.companies import require_company_access
-from app.routers.members import require_admin_access
+from app.core.dependencies import require_company_access, require_admin_access
 from app.services.timesheet_service import upsert_timelog # <-- Nový import
 
 router = APIRouter(prefix="/companies/{company_id}/time-logs", tags=["time-logs"])
