@@ -1,7 +1,24 @@
-# app/schemas/task.py
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
-from .user import UserOut # <-- Nový import
+from typing import Optional, List
+from .user import UserOut
+
+# --- NOVÁ SCHÉMATA PRO ZOBRAZENÍ POUŽITÉHO MATERIÁLU ---
+
+class UsedItemInventoryPreviewOut(BaseModel):
+    """Zjednodušený pohled na skladovou položku pro seznam materiálu."""
+    id: int
+    name: str
+    sku: str
+    model_config = ConfigDict(from_attributes=True)
+
+class UsedItemOut(BaseModel):
+    """Reprezentuje jeden záznam o použitém materiálu na úkolu."""
+    id: int
+    quantity: int
+    inventory_item: UsedItemInventoryPreviewOut
+    model_config = ConfigDict(from_attributes=True)
+
+# --- PŮVODNÍ SCHÉMATA S ÚPRAVAMI ---
 
 class TaskBase(BaseModel):
     name: str
@@ -16,13 +33,7 @@ class TaskUpdateIn(BaseModel):
     status: Optional[str] = None
 
 class TaskAssignIn(BaseModel):
-    # Umožníme nastavit ID nebo null pro odebrání
     assignee_id: Optional[int] = None
-
-# Tyto schémata zůstávají pro ostatní moduly
-class TimeLogCreateIn(BaseModel):
-    work_type_id: int
-    hours: float
 
 class UsedItemCreateIn(BaseModel):
     inventory_item_id: int
@@ -32,7 +43,9 @@ class TaskOut(TaskBase):
     id: int
     status: str
     work_order_id: int
-    # Místo ID vracíme celý objekt uživatele
     assignee: Optional[UserOut] = None
+    
+    # --- NOVÉ POLE PRO SEZNAM MATERIÁLU ---
+    used_items: List[UsedItemOut] = []
     
     model_config = ConfigDict(from_attributes=True)

@@ -11,6 +11,18 @@ class RoleEnum(str, Enum):
     admin = "admin"
     member = "member"
 
+# Přidat na začátek souboru s ostatními Enumy
+class AbsenceType(str, Enum):
+    vacation = "vacation"      # Dovolená
+    sick_day = "sick_day"      # Nemoc
+    doctor = "doctor"          # Návštěva lékaře
+    unpaid_leave = "unpaid_leave" # Neplacené volno
+    other = "other"            # Ostatní
+
+class AbsenceStatus(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -168,32 +180,51 @@ class Task(Base):
     assignee: Mapped["User"] = relationship()
     used_items: Mapped[list["UsedInventoryItem"]] = relationship(cascade="all, delete-orphan")
 
+
+class Absence(Base):
+    __tablename__ = "absences"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    
+    absence_type: Mapped[AbsenceType] = mapped_column(SAEnum(AbsenceType))
+    status: Mapped[AbsenceStatus] = mapped_column(SAEnum(AbsenceStatus), default=AbsenceStatus.pending, index=True)
+    
+    start_date: Mapped[datetime] = mapped_column(Date)
+    end_date: Mapped[datetime] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(Text) # Důvod/poznámka od zaměstnance
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    user: Mapped["User"] = relationship()
+
+
 class TimeLogStatus(str, Enum):
     pending = "pending"
     approved = "approved"
     rejected = "rejected"
 
 class TimeLog(Base):
-    """Záznam odpracovaného času na úkolu."""
+    """Záznam odpracovaného času na úkolu s konkrétním časem od-do."""
     __tablename__ = "time_logs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True) # Kdo práci vykonal
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     work_type_id: Mapped[int] = mapped_column(ForeignKey("work_types.id"))
     
-    hours: Mapped[float] = mapped_column(Float)
+    # --- ZÁSADNÍ ZMĚNA: Nahrazení 'hours' a 'work_date' ---
+    start_time: Mapped[datetime] = mapped_column(DateTime, index=True)
+    end_time: Mapped[datetime] = mapped_column(DateTime)
     
-    # --- ZMĚNY A NOVÉ SLOUPCE ---
-    work_date: Mapped[datetime] = mapped_column(Date) # Datum, ke kterému se práce vztahuje
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True) # Poznámka od zaměstnance
+    break_duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    is_overtime: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[TimeLogStatus] = mapped_column(SAEnum(TimeLogStatus), default=TimeLogStatus.pending, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    # Původní sloupec log_date byl přejmenován na created_at pro konzistenci
-    # --- KONEC ZMĚN ---
     
     user: Mapped["User"] = relationship()
     work_type: Mapped["WorkType"] = relationship()
-    task: Mapped["Task"] = relationship(back_populates="time_logs") # Přidán back_populates pro Task
+    task: Mapped["Task"] = relationship(back_populates="time_logs")
 
 class UsedInventoryItem(Base):
     """Záznam o materiálu použitém na úkolu."""
