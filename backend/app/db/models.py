@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Boolean, UniqueConstraint, Enum as SAEnum
+from sqlalchemy import String, Integer, ForeignKey, DateTime, Boolean, UniqueConstraint, Enum as SAEnum, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 
@@ -51,3 +51,51 @@ class Invite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("company_id", "email", name="uq_invite_company_email"),)
+
+class InventoryCategory(Base):
+    __tablename__ = "inventory_categories"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_categories.id"), nullable=True)
+    
+    parent: Mapped["InventoryCategory"] = relationship(remote_side=[id], back_populates="children")
+    children: Mapped[list["InventoryCategory"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
+    
+    __table_args__ = (UniqueConstraint("company_id", "name", "parent_id", name="uq_category_company_name_parent"),)
+
+class InventoryItem(Base):
+    __tablename__ = "inventory_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_categories.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    name: Mapped[str] = mapped_column(String(255))
+    sku: Mapped[str] = mapped_column(String(100), index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category: Mapped["InventoryCategory"] = relationship()
+    
+    __table_args__ = (UniqueConstraint("company_id", "sku", name="uq_inventory_item_company_sku"),)
+
+class AuditLogAction(str, Enum):
+    created = "created"
+    updated = "updated"
+    deleted = "deleted"
+    quantity_adjusted = "quantity_adjusted"
+
+class InventoryAuditLog(Base):
+    __tablename__ = "inventory_audit_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    
+    action: Mapped[AuditLogAction] = mapped_column(SAEnum(AuditLogAction))
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
