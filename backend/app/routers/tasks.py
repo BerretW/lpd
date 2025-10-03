@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.database import get_db
 from app.db.models import Task, UsedInventoryItem, InventoryItem, WorkOrder, Membership
-from app.schemas.task import TaskCreateIn, TaskOut, UsedItemCreateIn, TaskUpdateIn, TaskAssignIn
+from app.schemas.task import TaskCreateIn, TaskOut, UsedItemCreateIn, TaskUpdateIn, TaskAssignIn, UsedItemUpdateIn
 from app.routers.companies import require_company_access
 
 router = APIRouter(prefix="/companies/{company_id}/work-orders/{work_order_id}/tasks", tags=["tasks"])
@@ -31,6 +31,7 @@ async def create_task_in_work_order(
     company_id: int, work_order_id: int, payload: TaskCreateIn,
     db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
 ):
+    """Vytvoří nový úkol a přiřadí ho k existující zakázce."""
     res = await db.execute(select(WorkOrder).where(WorkOrder.id == work_order_id, WorkOrder.company_id == company_id))
     if not res.scalar_one_or_none():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Work order not found in this company.")
@@ -38,13 +39,13 @@ async def create_task_in_work_order(
     task = Task(**payload.dict(), work_order_id=work_order_id)
     db.add(task)
     await db.commit()
-    # Místo refresh() voláme funkci, která načte všechny vztahy
     return await get_full_task_or_404(work_order_id, task.id, db)
 
 @router.get("", response_model=List[TaskOut], summary="Získání seznamu všech úkolů v zakázce")
 async def list_tasks_in_work_order(
     company_id: int, work_order_id: int, db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
 ):
+    """Vrátí seznam všech úkolů pro danou zakázku."""
     stmt = (
         select(Task)
         .where(Task.work_order_id == work_order_id)
@@ -60,6 +61,7 @@ async def get_task(
     company_id: int, work_order_id: int, task_id: int,
     db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
 ):
+    """Vrátí detail jednoho konkrétního úkolu."""
     return await get_full_task_or_404(work_order_id, task_id, db)
 
 @router.patch("/{task_id}", response_model=TaskOut, summary="Úprava úkolu")
@@ -67,7 +69,7 @@ async def update_task(
     company_id: int, work_order_id: int, task_id: int, payload: TaskUpdateIn,
     db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
 ):
-    # Pro úpravu stačí načíst jen základní objekt
+    """Aktualizuje název, popis nebo status úkolu."""
     stmt = select(Task).where(Task.id == task_id, Task.work_order_id == work_order_id)
     task = (await db.execute(stmt)).scalar_one_or_none()
     if not task:
@@ -77,7 +79,6 @@ async def update_task(
     for key, value in update_data.items():
         setattr(task, key, value)
     await db.commit()
-    # Pro odpověď ale načteme plný objekt
     return await get_full_task_or_404(work_order_id, task_id, db)
 
 @router.post("/{task_id}/assign", response_model=TaskOut, summary="Přiřazení úkolu zaměstnanci")
@@ -85,6 +86,7 @@ async def assign_task(
     company_id: int, work_order_id: int, task_id: int, payload: TaskAssignIn,
     db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
 ):
+    """Přiřadí nebo odebere zaměstnance (assignee) z úkolu."""
     stmt = select(Task).where(Task.id == task_id, Task.work_order_id == work_order_id)
     task = (await db.execute(stmt)).scalar_one_or_none()
     if not task:
@@ -104,6 +106,7 @@ async def delete_task(
     company_id: int, work_order_id: int, task_id: int,
     db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
 ):
+    """Smaže úkol. Automaticky smaže i všechny navázané záznamy o čase a materiálu."""
     stmt = select(Task).where(Task.id == task_id, Task.work_order_id == work_order_id)
     task = (await db.execute(stmt)).scalar_one_or_none()
     if not task:
@@ -112,14 +115,15 @@ async def delete_task(
     await db.delete(task)
     await db.commit()
 
-@router.post("/{task_id}/inventory", status_code=status.HTTP_200_OK, summary="Zapsání použitého materiálu k úkolu")
+# --- Správa materiálu v rámci úkolu ---
+
+@router.post("/{task_id}/inventory", response_model=TaskOut, summary="Zapsání použitého materiálu k úkolu")
 async def use_inventory_for_task(
     company_id: int, work_order_id: int, task_id: int, payload: UsedItemCreateIn,
     db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
 ):
-    stmt = select(Task).where(Task.id == task_id, Task.work_order_id == work_order_id)
-    if not (await db.execute(stmt)).scalar_one_or_none():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+    """Zaznamená materiál použitý na úkol a sníží jeho stav ve skladu."""
+    await get_full_task_or_404(work_order_id, task_id, db)
     
     item_stmt = select(InventoryItem).where(InventoryItem.id == payload.inventory_item_id, InventoryItem.company_id == company_id)
     item = (await db.execute(item_stmt)).scalar_one_or_none()
@@ -132,4 +136,46 @@ async def use_inventory_for_task(
     used_item = UsedInventoryItem(**payload.dict(), task_id=task_id)
     db.add(used_item)
     await db.commit()
-    return {"message": "Inventory item logged and stock updated successfully."}
+    # Vracíme plný detail úkolu, aby frontend viděl aktualizovaný seznam materiálu
+    return await get_full_task_or_404(work_order_id, task_id, db)
+
+@router.patch("/{task_id}/inventory/{used_item_id}", response_model=TaskOut, summary="Úprava množství použitého materiálu")
+async def update_used_inventory(
+    company_id: int, work_order_id: int, task_id: int, used_item_id: int,
+    payload: UsedItemUpdateIn,
+    db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
+):
+    """Upraví množství u již zaznamenaného materiálu a automaticky upraví i stav skladu."""
+    stmt = select(UsedInventoryItem).where(UsedInventoryItem.id == used_item_id, UsedInventoryItem.task_id == task_id).options(selectinload(UsedInventoryItem.inventory_item))
+    used_item_record = (await db.execute(stmt)).scalar_one_or_none()
+    if not used_item_record:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Used inventory record not found for this task.")
+
+    inventory_item = used_item_record.inventory_item
+    quantity_diff = payload.quantity - used_item_record.quantity
+    
+    if quantity_diff > 0 and inventory_item.quantity < quantity_diff:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not enough items in stock to increase quantity.")
+        
+    inventory_item.quantity -= quantity_diff
+    used_item_record.quantity = payload.quantity
+    
+    await db.commit()
+    return await get_full_task_or_404(work_order_id, task_id, db)
+
+@router.delete("/{task_id}/inventory/{used_item_id}", response_model=TaskOut, summary="Smazání záznamu o použitém materiálu")
+async def delete_used_inventory(
+    company_id: int, work_order_id: int, task_id: int, used_item_id: int,
+    db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
+):
+    """Smaže záznam o použitém materiálu, vrátí kusy zpět na sklad a vrátí aktualizovaný úkol."""
+    stmt = select(UsedInventoryItem).where(UsedInventoryItem.id == used_item_id, UsedInventoryItem.task_id == task_id).options(selectinload(UsedInventoryItem.inventory_item))
+    used_item_record = (await db.execute(stmt)).scalar_one_or_none()
+    if not used_item_record:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Used inventory record not found for this task.")
+
+    used_item_record.inventory_item.quantity += used_item_record.quantity
+    
+    await db.delete(used_item_record)
+    await db.commit()
+    return await get_full_task_or_404(work_order_id, task_id, db)

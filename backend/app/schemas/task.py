@@ -49,3 +49,11 @@ class TaskOut(TaskBase):
     used_items: List[UsedItemOut] = []
     
     model_config = ConfigDict(from_attributes=True)
+
+class UsedItemCreateIn(BaseModel):
+    inventory_item_id: int
+    quantity: int
+
+# --- PŘIDAT NOVÉ SCHÉMA ---
+class UsedItemUpdateIn(BaseModel):
+    quantity: int

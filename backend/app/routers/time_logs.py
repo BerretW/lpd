@@ -81,16 +81,17 @@ async def update_time_log(
     if log_to_update.status != TimeLogStatus.pending:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot edit a log that has already been processed.")
     
-    # Smažeme starý záznam
     await db.delete(log_to_update)
-    await db.flush() # Aplikujeme smazání v rámci transakce
+    await db.flush()
 
-    # Vložíme "nový" (upravený) záznam s řešením překryvů
     try:
-        updated_log = await upsert_timelog(db, user_id, payload)
+        # Přetypujeme TimeLogUpdateIn na TimeLogCreateIn, protože mají stejnou strukturu
+        create_payload = TimeLogCreateIn(**payload.dict())
+        # --- OPRAVA ZDE: Přidáno company_id ---
+        updated_log = await upsert_timelog(db, user_id, company_id, create_payload)
         await db.commit()
     except ValueError as e:
-        await db.rollback() # Pokud vložení selže, vrátíme zpět i smazání
+        await db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
         
     return await get_log_or_404(updated_log.id, company_id, db)

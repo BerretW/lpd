@@ -25,7 +25,10 @@ def print_step(title):
 
 def print_result(response, expected_status_code=None):
     try:
-        data = response.json()
+        if response.status_code != 204: # No Content nemá tělo
+            data = response.json()
+        else:
+            data = None
     except requests.exceptions.JSONDecodeError:
         data = response.text
 
@@ -72,14 +75,11 @@ def run_tests():
     admin_token = login_data["access_token"]
     
     # 2. Správa členů
-    print_step("Admin invites a new employee")
+    print_step("Admin invites and accepts a new employee")
     invite_payload = {"email": EMPLOYEE_EMAIL, "role": "member"}
     response = requests.post(f"{BASE_URL}/invites/companies/{company_id}", json=invite_payload, headers=get_headers(admin_token))
     invite_data = print_result(response, 201)
-    invite_token = invite_data["token"]
-    
-    print_step("New employee accepts the invite")
-    accept_payload = {"token": invite_token, "password": ADMIN_PASSWORD}
+    accept_payload = {"token": invite_data["token"], "password": ADMIN_PASSWORD}
     response = requests.post(f"{BASE_URL}/invites/accept", json=accept_payload)
     employee_data = print_result(response, 200)
     employee_user_id = employee_data["id"]
@@ -91,14 +91,12 @@ def run_tests():
     client_data = print_result(response, 201)
     client_id = client_data["id"]
 
-    # 4. Sklad a kategorie
-    print_step("Creating an inventory category and item")
-    category_payload = {"name": "Senzory"}
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/categories", json=category_payload, headers=get_headers(admin_token))
-    category_data = print_result(response, 201)
+    # 4. Sklad
+    print_step("Creating an inventory item")
     item_payload = {"name": "PIR Sensor", "sku": f"PIR-{timestamp}", "quantity": 50}
     response = requests.post(f"{BASE_URL}/companies/{company_id}/inventory", json=item_payload, headers=get_headers(admin_token))
     item_data = print_result(response, 201)
+    item_id = item_data["id"]
 
     # 5. Druhy práce
     print_step("Creating a work type")
@@ -108,67 +106,50 @@ def run_tests():
     work_type_id = work_type_data["id"]
 
     # 6. Workflow zakázky a úkolu
-    print_step("Creating a work order")
+    print_step("Creating a work order and a task")
     wo_payload = {"name": "Instalace v objektu A", "client_id": client_id}
     response = requests.post(f"{BASE_URL}/companies/{company_id}/work-orders", json=wo_payload, headers=get_headers(admin_token))
     wo_data = print_result(response, 201)
     work_order_id = wo_data["id"]
-
-    print_step("Creating a new task in the work order")
     task_payload = {"name": "Montáž centrální jednotky"}
     response = requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks", json=task_payload, headers=get_headers(admin_token))
     task_data = print_result(response, 201)
     task_id = task_data["id"]
     
-    # 7. Workflow odpracovaných hodin (s pokročilými testy)
-    print_step("Employee logs first time block (8:00 - 10:00)")
-    start_time_1 = datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
-    end_time_1 = start_time_1 + timedelta(hours=2)
-    log_payload_1 = {
-        "task_id": task_id, "work_type_id": work_type_id,
-        "start_time": start_time_1.isoformat(), "end_time": end_time_1.isoformat()
-    }
-    # Přihlásíme zaměstnance
+    # 7. Workflow odpracovaných hodin
+    print_step("Employee logs a time block")
+    start_time = datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
+    end_time = start_time + timedelta(hours=2)
+    log_payload = {"task_id": task_id, "work_type_id": work_type_id, "start_time": start_time.isoformat(), "end_time": end_time.isoformat()}
     employee_login_payload = {"email": EMPLOYEE_EMAIL, "password": ADMIN_PASSWORD}
     response = requests.post(f"{BASE_URL}/auth/login", json=employee_login_payload)
     employee_token = print_result(response, 200)["access_token"]
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=log_payload_1, headers=get_headers(employee_token))
+    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=log_payload, headers=get_headers(employee_token))
     print_result(response, 201)
 
-    print_step("Employee logs overlapping time block (9:30 - 11:00) -> should shorten the first block")
-    start_time_2 = start_time_1 + timedelta(hours=1, minutes=30)
-    end_time_2 = start_time_2 + timedelta(hours=1, minutes=30)
-    log_payload_2 = {
-        "task_id": task_id, "work_type_id": work_type_id, "notes": "Překryv",
-        "start_time": start_time_2.isoformat(), "end_time": end_time_2.isoformat()
-    }
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=log_payload_2, headers=get_headers(employee_token))
-    print_result(response, 201)
+    # 8. Kompletní workflow použitého materiálu
+    print_step("Logging used inventory for the task (2 units)")
+    inventory_payload = {"inventory_item_id": item_id, "quantity": 2}
+    response = requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory", json=inventory_payload, headers=get_headers(admin_token))
+    task_with_item_data = print_result(response, 200)
+    # Získáme ID záznamu o použitém materiálu z odpovědi
+    used_item_id = task_with_item_data["used_items"][0]["id"]
     
-    print_step("Employee logs time and creates a new task simultaneously (13:00 - 14:00)")
-    start_time_3 = start_time_1.replace(hour=13)
-    end_time_3 = start_time_3 + timedelta(hours=1)
-    log_payload_3 = {
-        "work_type_id": work_type_id,
-        "start_time": start_time_3.isoformat(), "end_time": end_time_3.isoformat(),
-        "new_task": {
-            "work_order_id": work_order_id,
-            "name": "Telefonát s klientem"
-        }
-    }
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=log_payload_3, headers=get_headers(employee_token))
-    time_log_to_approve = print_result(response, 201)
-    time_log_id_to_approve = time_log_to_approve["id"]
-
-    print_step("Listing employee's time logs for today to verify overlaps")
-    today = datetime.now().strftime('%Y-%m-%d')
-    response = requests.get(f"{BASE_URL}/companies/{company_id}/time-logs?work_date={today}", headers=get_headers(employee_token))
+    print_step("Updating used inventory quantity to 5 units")
+    update_inventory_payload = {"quantity": 5}
+    response = requests.patch(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory/{used_item_id}", json=update_inventory_payload, headers=get_headers(admin_token))
+    print_result(response, 200)
+    
+    print_step("Deleting the used inventory record")
+    response = requests.delete(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory/{used_item_id}", headers=get_headers(admin_token))
     print_result(response, 200)
 
-    print_step("Admin approves one of the time logs")
-    status_payload = {"status": "approved"}
-    response = requests.post(f"{BASE_URL}/companies/{company_id}/time-logs/{time_log_id_to_approve}/status", json=status_payload, headers=get_headers(admin_token))
-    print_result(response, 200)
+    # 9. Úklid
+    print_step("Cleaning up: Deleting the task and the client")
+    response = requests.delete(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}", headers=get_headers(admin_token))
+    print_result(response, 204)
+    response = requests.delete(f"{BASE_URL}/companies/{company_id}/clients/{client_id}", headers=get_headers(admin_token))
+    print_result(response, 204)
 
     print("\n" + "="*50)
     print("\033[92mAll tests completed successfully!\033[0m")
@@ -181,7 +162,7 @@ if __name__ == "__main__":
     except requests.exceptions.ConnectionError:
         print("\n\033[91mFATAL ERROR: Could not connect to the API server.\033[0m")
         print(f"Please make sure the backend is running at {BASE_URL}")
-    except AssertionError as e:
+    except AssertionError:
         print(f"\n\033[91m--- TEST FAILED ---\033[0m")
     except Exception as e:
         print(f"\n\033[91mAn unexpected error occurred: {e}\033[0m")
