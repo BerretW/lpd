@@ -221,20 +221,33 @@ class TimeLogStatus(str, Enum):
     approved = "approved"
     rejected = "rejected"
 
+class TimeLogEntryType(str, Enum):
+    WORK = "work"              # Běžná práce
+    VACATION = "vacation"      # Placená dovolená
+    SICK_DAY = "sick_day"      # Placená nemocenská/sick day
+    DOCTOR = "doctor"          # Placená návštěva lékaře
+    UNPAID_LEAVE = "unpaid_leave" # Neplacené volno
+
 class TimeLog(Base):
-    """Záznam odpracovaného času na úkolu s konkrétním časem od-do."""
+    """Univerzální záznam v docházce (časová událost)."""
     __tablename__ = "time_logs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True) # Přidáno pro snazší filtrování
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    work_type_id: Mapped[int] = mapped_column(ForeignKey("work_types.id"))
     
-    # --- ZÁSADNÍ ZMĚNA: Nahrazení 'hours' a 'work_date' ---
+    # --- NOVÁ STRUKTURA ---
+    entry_type: Mapped[TimeLogEntryType] = mapped_column(SAEnum(TimeLogEntryType), default=TimeLogEntryType.WORK)
+    
+    # Tato pole jsou relevantní POUZE pro typ 'WORK'
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True, index=True)
+    work_type_id: Mapped[int | None] = mapped_column(ForeignKey("work_types.id"), nullable=True)
+    
     start_time: Mapped[datetime] = mapped_column(DateTime, index=True)
     end_time: Mapped[datetime] = mapped_column(DateTime)
     
-    break_duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
-    is_overtime: Mapped[bool] = mapped_column(Boolean, default=False)
+    break_duration_minutes: Mapped[int] = mapped_column(Integer, default=0, comment="Relevantní pouze pro 'WORK'")
+    is_overtime: Mapped[bool] = mapped_column(Boolean, default=False, comment="Relevantní pouze pro 'WORK'")
+    
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[TimeLogStatus] = mapped_column(SAEnum(TimeLogStatus), default=TimeLogStatus.pending, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
