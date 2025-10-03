@@ -108,3 +108,31 @@ async def update_time_log_status(
     await db.commit()
     await db.refresh(log)
     return log
+
+
+@router.delete("/{time_log_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Smazání záznamu času")
+async def delete_time_log(
+    company_id: int, time_log_id: int,
+    db: AsyncSession = Depends(get_db), token: Dict[str, Any] = Depends(require_company_access)
+):
+    """
+    Umožní uživateli smazat svůj vlastní záznam o odpracovaném čase,
+    pokud tento záznam ještě nebyl schválen ani zamítnut (je ve stavu 'pending').
+    """
+    log = await get_log_or_404(time_log_id, company_id, db)
+    current_user_id = int(token.get("sub"))
+
+    # Ověření, že uživatel maže svůj vlastní záznam
+    if log.user_id != current_user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only delete your own time logs.")
+
+    # Ověření, že záznam je stále ve stavu 'pending'
+    if log.status != TimeLogStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete a time log that has already been processed (approved or rejected)."
+        )
+
+    await db.delete(log)
+    await db.commit()
+    # Při statusu 204 No Content se nevrací žádné tělo odpovědi.
