@@ -1,55 +1,46 @@
-// App.tsx
-import React, { useState, useEffect } from 'react';
+// App.tsx (NOVÁ VERZE)
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import * as SecureStore from 'expo-secure-store';
-
+import { AuthProvider, useAuth } from './src/state/AuthContext';
 import LoginScreen from './src/screens/LoginScreen';
 import InventoryListScreen from './src/screens/InventoryListScreen';
 import ScannerScreen from './src/screens/ScannerScreen';
-// import AddItemScreen from './src/screens/AddItemScreen'; // Tuto obrazovku si vytvoříte
+import AddItemScreen from './src/screens/AddItemScreen';
 
 const Stack = createStackNavigator();
 
-export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+function AppNavigator() {
+  const { authData, loading } = useAuth();
 
-  useEffect(() => {
-    // Při startu aplikace zkontrolujeme, zda je token uložen
-    const checkToken = async () => {
-      const token = await SecureStore.getItemAsync('authToken');
-      if (token) {
-        setIsLoggedIn(true);
-      }
-      setIsLoading(false);
-    };
-    checkToken();
-  }, []);
-
-  if (isLoading) {
-    // Zobrazit splash screen, než zkontrolujeme token
+  if (loading) {
+    // Můžeme zobrazit splash screen
     return null;
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
-        {isLoggedIn ? (
-          // Obrazovky pro přihlášeného uživatele
-          <>
-            <Stack.Screen name="Sklad" component={InventoryListScreen} />
-            <Stack.Screen name="Scanner" component={ScannerScreen} />
-            {/* <Stack.Screen name="AddItem" component={AddItemScreen} /> */}
-          </>
-        ) : (
-          // Obrazovka pro přihlášení
-          <Stack.Screen name="Login">
-            {/* Předáme funkci pro změnu stavu po úspěšném přihlášení */}
-            {(props) => <LoginScreen {...props} onLoginSuccess={() => setIsLoggedIn(true)} />}
-          </Stack.Screen>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <Stack.Navigator>
+      {authData?.token ? (
+        // Přihlášený uživatel
+        <>
+          <Stack.Screen name="Sklad" component={InventoryListScreen} />
+          <Stack.Screen name="Scanner" component={ScannerScreen} />
+          <Stack.Screen name="AddItem" component={AddItemScreen} options={{ title: 'Přidat položku' }} />
+        </>
+      ) : (
+        // Nepřihlášený
+        <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+      )}
+    </Stack.Navigator>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <NavigationContainer>
+        <AppNavigator />
+      </NavigationContainer>
+    </AuthProvider>
   );
 }
