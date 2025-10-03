@@ -87,14 +87,15 @@
 
 ### 3.2. Správa Zakázek (Work Orders)
 
-| **Metoda** | **Endpoint**                                                   | **Popis**                                                        |
-| ---------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **POST**   | **/companies/{company_id}/work-orders**                        | **Vytvoří novou zakázku.**                                    |
-| **GET**    | **/companies/{company_id}/work-orders**                        | **Získá seznam všech zakázek firmy.**                        |
-| **GET**    | **/companies/{company_id}/work-orders/{work_order_id}**        | **Získá detail zakázky, včetně seznamu jejích úkolů.**   |
-| **PATCH**  | **/companies/{company_id}/work-orders/{work_order_id}**        | **Upraví základní údaje zakázky.**                          |
-| **POST**   | **/companies/{company_id}/work-orders/{work_order_id}/status** | **Změní stav zakázky (uzavření/znovuotevření).**          |
-| **POST**   | **/companies/{company_id}/work-orders/{work_order_id}/copy**   | **Vytvoří kompletní kopii zakázky včetně všech úkolů.** |
+| Metoda | Endpoint | Popis |
+|---|---|---|
+| `POST` | `/companies/{company_id}/work-orders` | Vytvoří novou zakázku. |
+| `GET` | `/companies/{company_id}/work-orders` | Získá seznam všech zakázek firmy. |
+| `GET` | `/companies/{company_id}/work-orders/{work_order_id}` | Získá detail zakázky, včetně seznamu jejích úkolů. |
+| `GET` | `/companies/{company_id}/work-orders/{work_order_id}/billing-report` | **(Nový)** Získá agregované podklady pro fakturaci. Lze filtrovat (`?start_date=YYYY-MM-DD`). |
+| `PATCH`| `/companies/{company_id}/work-orders/{work_order_id}` | Upraví základní údaje zakázky. |
+| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/status`| Změní stav zakázky (uzavření/znovuotevření). |
+| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/copy` | Vytvoří kompletní kopii zakázky včetně všech úkolů. |
 
 ### 3.3. Správa Úkolů (Tasks)
 
@@ -143,13 +144,14 @@
 
 **Endpointy pro zaměstnance a manažery ke správě a schvalování odpracovaného času.**
 
-| **Metoda** | **Endpoint**                                               | **Popis**                                                                                                                                    |
-| ---------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **POST**   | **/companies/{company_id}/time-logs**                      | **Vytvoří nový záznam času pro přihlášeného uživatele.**                                                                           |
-| **GET**    | **/companies/{company_id}/time-logs**                      | **Získá seznam záznamů. Běžný uživatel vidí jen své. Admin může filtrovat (**?user_id_filter=X**,** **?start_date=YYYY-MM-DD**). |
-| **PATCH**  | **/companies/{company_id}/time-logs/{time_log_id}**        | **Umožní uživateli upravit** **svůj vlastní** **záznam, pokud je ve stavu** **pending**.                             |
-| **DELETE** | **/companies/{company_id}/time-logs/{time_log_id}**        | **Umožní uživateli smazat** **svůj vlastní** **záznam, pokud je ve stavu** **pending**.                              |
-| **POST**   | **/companies/{company_id}/time-logs/{time_log_id}/status** | **(Pro adminy)** **Změní stav záznamu (např. na** **approved** **nebo** **rejected**).                           |
+| Metoda | Endpoint | Popis |
+|---|---|---|
+| `POST` | `/companies/{company_id}/time-logs` | Vytvoří nový záznam času. |
+| `GET` | `/companies/{company_id}/time-logs` | Získá seznam záznamů pro daný den a uživatele. |
+| `GET` | `/companies/{company_id}/time-logs/{time_log_id}/service-report-data` | **(Nový)** Získá kompletní detail související zakázky a úkolu. |
+| `PATCH`| `/companies/{company_id}/time-logs/{time_log_id}`| Umožní uživateli upravit svůj neschválený záznam. |
+| `DELETE`| `/companies/{company_id}/time-logs/{time_log_id}`| Umožní uživateli smazat svůj neschválený záznam. |
+| `POST` | `/companies/{company_id}/time-logs/{time_log_id}/status`| **(Pro adminy)** Změní stav záznamu. |                       |
 
 ### 3.8. Auditní Log Skladu
 

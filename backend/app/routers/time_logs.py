@@ -6,11 +6,15 @@ from sqlalchemy.orm import selectinload
 from datetime import date
 
 from app.db.database import get_db
-from app.db.models import TimeLog, Task, WorkOrder, TimeLogStatus
+from app.db.models import TimeLog, Task, WorkOrder, TimeLogStatus, UsedInventoryItem
 from app.schemas.time_log import TimeLogCreateIn, TimeLogOut, TimeLogUpdateIn, TimeLogStatusUpdateIn
 from app.routers.members import require_admin_access
 from app.core.dependencies import require_company_access
 from app.services.timesheet_service import upsert_timelog
+
+from app.schemas.time_log import ServiceReportDataOut
+from app.schemas.work_order import WorkOrderOut
+from app.schemas.task import TaskOut
 
 router = APIRouter(prefix="/companies/{company_id}/time-logs", tags=["time-logs"])
 
@@ -133,3 +137,67 @@ async def delete_time_log(
 
     await db.delete(log)
     await db.commit()
+
+@router.get(
+    "/{time_log_id}/service-report-data",
+    response_model=ServiceReportDataOut,
+    summary="Získání dat pro servisní list z jednoho záznamu docházky"
+)
+async def get_service_report_data(
+    company_id: int,
+    time_log_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access)
+):
+    """
+    Na základě ID jednoho záznamu docházky (`time_log_id`) najde související
+    úkol a zakázku a vrátí jejich kompletní detaily.
+    
+    Tento endpoint je ideální pro rychlé načtení celého kontextu práce
+    pro zobrazení např. v mobilní aplikaci technika nebo pro generování
+    servisního/montážního listu.
+    """
+    # 1. Načteme TimeLog a ověříme jeho existenci a příslušnost k firmě
+    log = await get_log_or_404(time_log_id, company_id, db)
+
+    # 2. Zjistíme, zda má záznam přiřazený úkol
+    if not log.task or not log.task.work_order_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This time log is not associated with a specific task or work order (e.g., vacation)."
+        )
+
+    # 3. Načteme plné detaily úkolu a zakázky pomocí jejich ID
+    # Použijeme pomocné funkce z jejich vlastních routerů, pokud je máme,
+    # nebo si je zde znovu načteme s plnými detaily.
+    
+    # Načtení plného detailu úkolu
+    task_stmt = (
+        select(Task)
+        .where(Task.id == log.task_id)
+        .options(
+            selectinload(Task.assignee),
+            selectinload(Task.used_items).selectinload(UsedInventoryItem.inventory_item)
+        )
+    )
+    full_task = (await db.execute(task_stmt)).scalar_one_or_none()
+
+    # Načtení plného detailu zakázky
+    work_order_stmt = (
+        select(WorkOrder)
+        .where(WorkOrder.id == log.task.work_order_id)
+        .options(
+            selectinload(WorkOrder.tasks),
+            selectinload(WorkOrder.client)
+        )
+    )
+    full_work_order = (await db.execute(work_order_stmt)).scalar_one_or_none()
+    
+    if not full_task or not full_work_order:
+         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not retrieve full task or work order details.")
+
+    # 4. Sestavíme a vrátíme finální objekt
+    return ServiceReportDataOut(
+        work_order=full_work_order,
+        task=full_task
+    )

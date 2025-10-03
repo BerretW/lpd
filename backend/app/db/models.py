@@ -267,3 +267,5 @@ class UsedInventoryItem(Base):
     log_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
     inventory_item: Mapped["InventoryItem"] = relationship()
+        # --- PŘIDAT TYTO DVA ŘÁDKY ---
+    task: Mapped["Task"] = relationship(back_populates="used_items")

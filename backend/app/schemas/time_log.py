@@ -5,6 +5,8 @@ from datetime import datetime
 from .user import UserOut
 from .work_type import WorkTypeOut
 from app.db.models import TimeLogStatus, TimeLogEntryType
+from .work_order import WorkOrderOut
+from .task import TaskOut
 
 class NewTaskData(BaseModel):
     work_order_id: int
@@ -68,3 +70,11 @@ class TimeLogOut(TimeLogBase):
         return round(duration.total_seconds() / 3600, 2)
 
     model_config = ConfigDict(from_attributes=True)
+class ServiceReportDataOut(BaseModel):
+    """
+    Struktura dat, která vrací kontext pro servisní/montážní list
+    záznamu z docházky.
+    """
+
+    work_order: WorkOrderOut
+    task: TaskOut
