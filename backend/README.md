@@ -153,7 +153,22 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | **POST**   | **/companies/{company_id}/work-types** | **Vytvoří nový druh práce.**                        |
 
 ---
+### 3.7. Správa Odpracovaných Hodin (Timesheets)
 
+Endpointy pro zaměstnance a manažery ke správě a schvalování odpracovaného času.
+
+| Metoda | Endpoint | Popis |
+|---|---|---|
+| `POST` | `/companies/{company_id}/time-logs` | Vytvoří nový záznam času pro přihlášeného uživatele. |
+| `GET` | `/companies/{company_id}/time-logs` | Získá seznam záznamů. Běžný uživatel vidí jen své. Admin může filtrovat (`?user_id_filter=X`, `?start_date=YYYY-MM-DD`). |
+| `PATCH`| `/companies/{company_id}/time-logs/{time_log_id}`| Umožní uživateli upravit **svůj vlastní** záznam, pokud je ve stavu `pending`. |
+| `POST` | `/companies/{company_id}/time-logs/{time_log_id}/status`| **(Pro adminy)** Změní stav záznamu (např. na `approved` nebo `rejected`). |
+
+**Workflow:**
+1.  Zaměstnanec vytvoří záznam (`POST`). Ten je automaticky ve stavu `pending`.
+2.  Zaměstnanec si může prohlížet a upravovat své `pending` záznamy.
+3.  Manažer si zobrazí všechny `pending` záznamy (např. za poslední týden).
+4.  Manažer pomocí `POST /{time_log_id}/status` schválí nebo zamítne záznam.
 ## 4. Typický postup (Workflow) pro frontend
 
 * **Uživatel se** **přihlásí** **(**/auth/login**) a vy si** **uložíte token**.

@@ -4,6 +4,7 @@ from sqlalchemy import String, Integer, ForeignKey, DateTime, Boolean, UniqueCon
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 from sqlalchemy import Float # <-- Přidat import
+from sqlalchemy import Date # <-- Přidat import
 
 class RoleEnum(str, Enum):
     owner = "owner"
@@ -157,7 +158,7 @@ class Task(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     work_order_id: Mapped[int] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"), index=True)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True) # Kdo na úkolu pracuje
-    
+    time_logs: Mapped[list["TimeLog"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(50), default="todo", index=True) # např. todo, in_progress, done, approved
@@ -168,6 +169,11 @@ class Task(Base):
     time_logs: Mapped[list["TimeLog"]] = relationship(cascade="all, delete-orphan")
     used_items: Mapped[list["UsedInventoryItem"]] = relationship(cascade="all, delete-orphan")
 
+class TimeLogStatus(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
 class TimeLog(Base):
     """Záznam odpracovaného času na úkolu."""
     __tablename__ = "time_logs"
@@ -177,10 +183,18 @@ class TimeLog(Base):
     work_type_id: Mapped[int] = mapped_column(ForeignKey("work_types.id"))
     
     hours: Mapped[float] = mapped_column(Float)
-    log_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # --- ZMĚNY A NOVÉ SLOUPCE ---
+    work_date: Mapped[datetime] = mapped_column(Date) # Datum, ke kterému se práce vztahuje
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True) # Poznámka od zaměstnance
+    status: Mapped[TimeLogStatus] = mapped_column(SAEnum(TimeLogStatus), default=TimeLogStatus.pending, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Původní sloupec log_date byl přejmenován na created_at pro konzistenci
+    # --- KONEC ZMĚN ---
     
     user: Mapped["User"] = relationship()
     work_type: Mapped["WorkType"] = relationship()
+    task: Mapped["Task"] = relationship(back_populates="time_logs") # Přidán back_populates pro Task
 
 class UsedInventoryItem(Base):
     """Záznam o materiálu použitém na úkolu."""

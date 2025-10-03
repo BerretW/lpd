@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles # <-- Nový import
 from pathlib import Path # <-- Nový import
 from app.core.config import settings
 from app.db.database import engine, Base
-from app.routers import auth, companies, invites, members, inventory, categories, work_types, work_orders, tasks, clients
+from app.routers import auth, companies, clients, invites, members, inventory, categories, work_types, work_orders, tasks, time_logs
 
 app = FastAPI(title=settings.PROJECT_NAME)
 # Vytvoření složky pro nahrávání, pokud neexistuje
@@ -31,6 +31,7 @@ app.include_router(categories.router)
 app.include_router(work_types.router)
 app.include_router(work_orders.router)
 app.include_router(tasks.router)
+app.include_router(time_logs.router)
 
 @app.get("/healthz")
 async def health():
