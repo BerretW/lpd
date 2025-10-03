@@ -88,6 +88,22 @@ class InventoryItem(Base):
     
     __table_args__ = (UniqueConstraint("company_id", "sku", name="uq_inventory_item_company_sku"),)
 
+
+class Client(Base):
+    """Reprezentuje klienta/zákazníka patřícího jedné firmě."""
+    __tablename__ = "clients"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    
+    name: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_client_company_name"),)
+
 class AuditLogAction(str, Enum):
     created = "created"
     updated = "updated"
@@ -105,3 +121,75 @@ class InventoryAuditLog(Base):
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+class WorkType(Base):
+    """Definuje druh práce a jeho sazbu pro danou společnost."""
+    __tablename__ = "work_types"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    rate: Mapped[float] = mapped_column(Float, comment="Sazba za hodinu")
+    
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_work_type_company_name"),)
+
+class WorkOrder(Base):
+    """Reprezentuje zakázku nebo projekt."""
+    __tablename__ = "work_orders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    
+    # --- NOVÝ SLOUPEC ---
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="new", index=True) # např. new, in_progress, completed, billed
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    tasks: Mapped[list["Task"]] = relationship(back_populates="work_order", cascade="all, delete-orphan")
+    
+    # --- NOVÝ VZTAH ---
+    client: Mapped["Client"] = relationship()
+
+class Task(Base):
+    """Reprezentuje konkrétní úkol v rámci zakázky."""
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    work_order_id: Mapped[int] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"), index=True)
+    assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True) # Kdo na úkolu pracuje
+    
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="todo", index=True) # např. todo, in_progress, done, approved
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    work_order: Mapped["WorkOrder"] = relationship(back_populates="tasks")
+    assignee: Mapped["User"] = relationship()
+    time_logs: Mapped[list["TimeLog"]] = relationship(cascade="all, delete-orphan")
+    used_items: Mapped[list["UsedInventoryItem"]] = relationship(cascade="all, delete-orphan")
+
+class TimeLog(Base):
+    """Záznam odpracovaného času na úkolu."""
+    __tablename__ = "time_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True) # Kdo práci vykonal
+    work_type_id: Mapped[int] = mapped_column(ForeignKey("work_types.id"))
+    
+    hours: Mapped[float] = mapped_column(Float)
+    log_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    user: Mapped["User"] = relationship()
+    work_type: Mapped["WorkType"] = relationship()
+
+class UsedInventoryItem(Base):
+    """Záznam o materiálu použitém na úkolu."""
+    __tablename__ = "used_inventory_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    inventory_item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id"), index=True)
+    
+    quantity: Mapped[int] = mapped_column(Integer)
+    log_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    inventory_item: Mapped["InventoryItem"] = relationship()
