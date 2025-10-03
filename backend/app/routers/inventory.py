@@ -1,25 +1,26 @@
+import shutil
+import uuid
+from pathlib import Path
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 
 from app.db.database import get_db
-from app.db.models import InventoryItem, InventoryAuditLog, AuditLogAction, RoleEnum
+from app.db.models import InventoryItem, InventoryAuditLog, AuditLogAction
 from app.schemas.inventory import InventoryItemCreateIn, InventoryItemOut, InventoryItemUpdateIn
 from app.routers.companies import require_company_access
+
+# --- Konfigurace pro nahrávání souborů ---
+UPLOAD_DIRECTORY = Path("static/images/inventory")
+UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)  # Jistota, že složka existuje
 
 # --- Pomocné funkce a závislosti ---
 
 def require_inventory_editor_access(payload: Dict[str, Any] = Depends(require_company_access)):
-    """
-    Závislost pro ověření oprávnění pro úpravy skladu.
-    V reálné aplikaci by se role uživatele načetla z databáze.
-    """
+    """Závislost pro ověření oprávnění pro úpravy skladu."""
     # Zde by byla logika pro ověření, že uživatel má roli admin/owner
-    # např. dotazem do DB: SELECT role FROM memberships WHERE user_id = :user_id AND company_id = :company_id
-    # if role not in [RoleEnum.owner, RoleEnum.admin]:
-    #     raise HTTPException(status.HTTP_403_FORBIDDEN, "Not enough permissions to edit inventory")
     return payload
 
 async def get_item_or_404(item_id: int, company_id: int, db: AsyncSession) -> InventoryItem:
@@ -27,7 +28,7 @@ async def get_item_or_404(item_id: int, company_id: int, db: AsyncSession) -> In
     stmt = (
         select(InventoryItem)
         .where(and_(InventoryItem.id == item_id, InventoryItem.company_id == company_id))
-        .options(selectinload(InventoryItem.category)) # Eager load kategorie pro detail
+        .options(selectinload(InventoryItem.category))
     )
     result = await db.execute(stmt)
     item = result.scalar_one_or_none()
@@ -52,9 +53,9 @@ async def create_inventory_item(
     token: Dict[str, Any] = Depends(require_inventory_editor_access)
 ):
     """
-    Vytvoří novou položku ve skladu a volitelně ji přiřadí ke kategorii.
-    - SKU (Stock Keeping Unit) musí být unikátní v rámci firmy.
-    - Automaticky vytvoří auditní záznam o vytvoření.
+    Vytvoří novou položku ve skladu včetně EAN, ceny a DPH.
+    - SKU musí být unikátní v rámci firmy.
+    - Automaticky vytvoří auditní záznam.
     """
     stmt = select(InventoryItem).where(
         and_(InventoryItem.company_id == company_id, InventoryItem.sku == payload.sku)
@@ -72,9 +73,7 @@ async def create_inventory_item(
 
     user_id = int(token.get("sub"))
     log = InventoryAuditLog(
-        item_id=item.id,
-        user_id=user_id,
-        company_id=company_id,
+        item_id=item.id, user_id=user_id, company_id=company_id,
         action=AuditLogAction.created,
         details=f"Položka '{item.name}' (SKU: {item.sku}) byla vytvořena s množstvím {item.quantity} ks."
     )
@@ -98,23 +97,44 @@ async def list_inventory_items(
     _=Depends(require_company_access)
 ):
     """
-    Vrátí seznam skladových položek pro danou firmu s možností stránkování
-    a filtrování podle `category_id`.
+    Vrátí seznam skladových položek s možností stránkování a filtrování podle kategorie.
     """
     stmt = (
         select(InventoryItem)
         .where(InventoryItem.company_id == company_id)
-        .options(selectinload(InventoryItem.category).selectinload(InventoryItem.category.children)) # Eager load pro kategorii a její děti
-        .offset(skip)
-        .limit(limit)
+        .options(selectinload(InventoryItem.category))
+        .offset(skip).limit(limit)
     )
-
     if category_id is not None:
         stmt = stmt.where(InventoryItem.category_id == category_id)
-
     result = await db.execute(stmt)
-    items = result.scalars().all()
-    return items
+    return result.scalars().all()
+
+@router.get(
+    "/by-ean/{ean}",
+    response_model=InventoryItemOut,
+    summary="Získání položky podle EAN kódu"
+)
+async def get_inventory_item_by_ean(
+    company_id: int,
+    ean: str,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access)
+):
+    """Najde a vrátí jednu skladovou položku na základě jejího EAN kódu v rámci dané firmy."""
+    stmt = (
+        select(InventoryItem)
+        .where(and_(InventoryItem.company_id == company_id, InventoryItem.ean == ean))
+        .options(selectinload(InventoryItem.category))
+    )
+    result = await db.execute(stmt)
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Inventory item with EAN '{ean}' not found in this company."
+        )
+    return item
 
 @router.get(
     "/{item_id}",
@@ -127,8 +147,53 @@ async def get_inventory_item(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    """Vrátí detail jedné skladové položky včetně informací o její kategorii."""
+    """Vrátí detail jedné skladové položky podle jejího ID."""
+    return await get_item_or_404(item_id, company_id, db)
+
+@router.post(
+    "/{item_id}/upload-image",
+    response_model=InventoryItemOut,
+    summary="Nahrání obrázku k položce ve skladu"
+)
+async def upload_inventory_item_image(
+    company_id: int,
+    item_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    token: Dict[str, Any] = Depends(require_inventory_editor_access)
+):
+    """
+    Nahraje a přiřadí obrázek k existující skladové položce.
+    - Vytvoří auditní záznam o změně obrázku.
+    """
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid file type, only images are allowed.")
+
     item = await get_item_or_404(item_id, company_id, db)
+    
+    file_extension = Path(file.filename).suffix
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = UPLOAD_DIRECTORY / unique_filename
+    
+    try:
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    finally:
+        file.file.close()
+
+    original_image_url = item.image_url
+    item.image_url = f"/static/images/inventory/{unique_filename}"
+    
+    user_id = int(token.get("sub"))
+    log = InventoryAuditLog(
+        item_id=item.id, user_id=user_id, company_id=company_id,
+        action=AuditLogAction.updated,
+        details=f"Obrázek změněn z '{original_image_url}' na '{item.image_url}'."
+    )
+    db.add(log)
+    
+    await db.commit()
+    await db.refresh(item)
     return item
 
 @router.patch(
@@ -144,9 +209,8 @@ async def update_inventory_item(
     token: Dict[str, Any] = Depends(require_inventory_editor_access)
 ):
     """
-    Aktualizuje vlastnosti skladové položky, včetně její kategorie.
-    - Umožňuje částečné úpravy (stačí poslat jen měněná pole).
-    - Automaticky vytváří auditní záznam o změnách.
+    Aktualizuje vlastnosti položky (název, EAN, cena, DPH, kategorie atd.).
+    - Vytváří auditní záznam o změnách.
     """
     item = await get_item_or_404(item_id, company_id, db)
     user_id = int(token.get("sub"))
@@ -158,13 +222,7 @@ async def update_inventory_item(
     changes = []
     for key, value in update_data.items():
         if getattr(item, key) != value:
-            # Speciální handling pro category_id pro lepší logování
-            if key == 'category_id':
-                old_category_name = item.category.name if item.category else "Žádná"
-                # Nový název kategorie bychom museli načíst z DB, pro zjednodušení logujeme ID
-                changes.append(f"Pole '{key}' změněno z '{getattr(item, key)}' (Kategorie: {old_category_name}) na '{value}'.")
-            else:
-                changes.append(f"Pole '{key}' změněno z '{getattr(item, key)}' na '{value}'.")
+            changes.append(f"Pole '{key}' změněno z '{getattr(item, key)}' na '{value}'.")
             setattr(item, key, value)
     
     if changes:
@@ -180,7 +238,6 @@ async def update_inventory_item(
         
         await db.commit()
         await db.refresh(item)
-
     return item
 
 @router.delete(
@@ -194,9 +251,7 @@ async def delete_inventory_item(
     db: AsyncSession = Depends(get_db),
     token: Dict[str, Any] = Depends(require_inventory_editor_access)
 ):
-    """
-    Trvale odstraní položku ze skladu a vytvoří o tom auditní záznam.
-    """
+    """Trvale odstraní položku ze skladu a vytvoří o tom auditní záznam."""
     item = await get_item_or_404(item_id, company_id, db)
     user_id = int(token.get("sub"))
     

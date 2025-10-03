@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
 from app.db.models import InventoryCategory, InventoryItem
@@ -19,12 +20,28 @@ async def create_category(
     _=Depends(require_company_access)
 ):
     """Vytvoří novou kategorii nebo podkategorii."""
-    # TODO: Zkontrolovat unikátnost názvu v rámci jednoho rodiče
-    category = InventoryCategory(**payload.dict(), company_id=company_id)
-    db.add(category)
-    await db.commit()
-    await db.refresh(category)
-    return category
+    try:
+        category = InventoryCategory(**payload.dict(), company_id=company_id)
+        db.add(category)
+        await db.commit()
+        await db.refresh(category)
+        return category
+    except IntegrityError as e:
+        await db.rollback()
+        # Zkontrolujeme, zda se jedná o porušení unique constraint pro název kategorie
+        if "uq_category_company_name_parent" in str(e.orig):
+            parent_text = "hlavní kategorii" if payload.parent_id is None else "podkategorii"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Kategorie s názvem '{payload.name}' již jako {parent_text} existuje."
+            )
+        # Jiná chyba integrity - necháme ji projít jako obecnou chybu
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Chyba při vytváření kategorie."
+        )
+
+
 
 @router.get("", response_model=List[CategoryOut])
 async def list_categories(

@@ -1,7 +1,7 @@
 import os
 
 class Settings:
-    PROJECT_NAME: str = "HoursService"
+    PROJECT_NAME: str = "Appartus Company Management"
     DATABASE_URL: str = os.getenv("DATABASE_URL", "mysql+asyncmy://root:password@db:3306/appdb")
     JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-secret-change-me")
     JWT_ALG: str = "HS256"

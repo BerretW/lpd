@@ -3,6 +3,7 @@ from enum import Enum
 from sqlalchemy import String, Integer, ForeignKey, DateTime, Boolean, UniqueConstraint, Enum as SAEnum, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
+from sqlalchemy import Float # <-- Přidat import
 
 class RoleEnum(str, Enum):
     owner = "owner"
@@ -70,7 +71,12 @@ class InventoryItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_categories.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+        # --- NOVÉ SLOUPCE ---
+    ean: Mapped[str | None] = mapped_column(String(13), nullable=True, index=True)
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    vat_rate: Mapped[float | None] = mapped_column(Float, nullable=True, comment="Sazba DPH v procentech, např. 21.0")
+    # --- KONEC NOVÝCH SLOUPCŮ ---
     name: Mapped[str] = mapped_column(String(255))
     sku: Mapped[str] = mapped_column(String(100), index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
