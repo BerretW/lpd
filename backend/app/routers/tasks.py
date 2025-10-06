@@ -5,9 +5,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.db.database import get_db
-from app.db.models import Task, UsedInventoryItem, InventoryItem, WorkOrder, Membership
-from app.schemas.task import TaskCreateIn, TaskOut, UsedItemCreateIn, TaskUpdateIn, TaskAssignIn, UsedItemUpdateIn
-from app.routers.companies import require_company_access
+from app.db.models import (
+    Task, UsedInventoryItem, InventoryItem, WorkOrder, Membership,
+    InventoryAuditLog, AuditLogAction
+)
+from app.schemas.task import (
+    TaskCreateIn, TaskOut, UsedItemCreateIn, TaskUpdateIn,
+    TaskAssignIn, UsedItemUpdateIn
+)
+from app.core.dependencies import require_company_access
 
 router = APIRouter(prefix="/companies/{company_id}/work-orders/{work_order_id}/tasks", tags=["tasks"])
 
@@ -120,9 +126,9 @@ async def delete_task(
 @router.post("/{task_id}/inventory", response_model=TaskOut, summary="Zapsání použitého materiálu k úkolu")
 async def use_inventory_for_task(
     company_id: int, work_order_id: int, task_id: int, payload: UsedItemCreateIn,
-    db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
+    db: AsyncSession = Depends(get_db), token: Dict[str, Any] = Depends(require_company_access)
 ):
-    """Zaznamená materiál použitý na úkol a sníží jeho stav ve skladu."""
+    """Zaznamená materiál použitý na úkol, sníží jeho stav ve skladu a vytvoří auditní záznam."""
     await get_full_task_or_404(work_order_id, task_id, db)
     
     item_stmt = select(InventoryItem).where(InventoryItem.id == payload.inventory_item_id, InventoryItem.company_id == company_id)
@@ -132,27 +138,42 @@ async def use_inventory_for_task(
     if item.quantity < payload.quantity:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not enough items in stock")
     
+    user_id = int(token.get("sub"))
+    original_quantity = item.quantity
     item.quantity -= payload.quantity
+    
     used_item = UsedInventoryItem(**payload.dict(), task_id=task_id)
     db.add(used_item)
+
+    log_entry = InventoryAuditLog(
+        item_id=item.id,
+        user_id=user_id,
+        company_id=company_id,
+        action=AuditLogAction.quantity_adjusted,
+        details=f"Odebráno {payload.quantity} ks pro úkol ID: {task_id}. Stav změněn z {original_quantity} na {item.quantity}."
+    )
+    db.add(log_entry)
+
     await db.commit()
-    # Vracíme plný detail úkolu, aby frontend viděl aktualizovaný seznam materiálu
     return await get_full_task_or_404(work_order_id, task_id, db)
 
 @router.patch("/{task_id}/inventory/{used_item_id}", response_model=TaskOut, summary="Úprava množství použitého materiálu")
 async def update_used_inventory(
     company_id: int, work_order_id: int, task_id: int, used_item_id: int,
     payload: UsedItemUpdateIn,
-    db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
+    db: AsyncSession = Depends(get_db), token: Dict[str, Any] = Depends(require_company_access)
 ):
-    """Upraví množství u již zaznamenaného materiálu a automaticky upraví i stav skladu."""
+    """Upraví množství u již zaznamenaného materiálu a automaticky upraví i stav skladu a auditní log."""
     stmt = select(UsedInventoryItem).where(UsedInventoryItem.id == used_item_id, UsedInventoryItem.task_id == task_id).options(selectinload(UsedInventoryItem.inventory_item))
     used_item_record = (await db.execute(stmt)).scalar_one_or_none()
     if not used_item_record:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Used inventory record not found for this task.")
 
+    user_id = int(token.get("sub"))
     inventory_item = used_item_record.inventory_item
-    quantity_diff = payload.quantity - used_item_record.quantity
+    original_item_quantity = inventory_item.quantity
+    original_used_quantity = used_item_record.quantity
+    quantity_diff = payload.quantity - original_used_quantity
     
     if quantity_diff > 0 and inventory_item.quantity < quantity_diff:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not enough items in stock to increase quantity.")
@@ -160,22 +181,51 @@ async def update_used_inventory(
     inventory_item.quantity -= quantity_diff
     used_item_record.quantity = payload.quantity
     
+    log_entry = InventoryAuditLog(
+        item_id=inventory_item.id,
+        user_id=user_id,
+        company_id=company_id,
+        action=AuditLogAction.quantity_adjusted,
+        details=(
+            f"Upraveno množství pro úkol ID: {task_id}. Původně použito: {original_used_quantity}, "
+            f"nyní: {payload.quantity}. Stav skladu změněn z {original_item_quantity} na {inventory_item.quantity}."
+        )
+    )
+    db.add(log_entry)
+
     await db.commit()
     return await get_full_task_or_404(work_order_id, task_id, db)
 
 @router.delete("/{task_id}/inventory/{used_item_id}", response_model=TaskOut, summary="Smazání záznamu o použitém materiálu")
 async def delete_used_inventory(
     company_id: int, work_order_id: int, task_id: int, used_item_id: int,
-    db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
+    db: AsyncSession = Depends(get_db), token: Dict[str, Any] = Depends(require_company_access)
 ):
-    """Smaže záznam o použitém materiálu, vrátí kusy zpět na sklad a vrátí aktualizovaný úkol."""
+    """Smaže záznam o použitém materiálu, vrátí kusy zpět na sklad, zaloguje a vrátí aktualizovaný úkol."""
     stmt = select(UsedInventoryItem).where(UsedInventoryItem.id == used_item_id, UsedInventoryItem.task_id == task_id).options(selectinload(UsedInventoryItem.inventory_item))
     used_item_record = (await db.execute(stmt)).scalar_one_or_none()
     if not used_item_record:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Used inventory record not found for this task.")
 
-    used_item_record.inventory_item.quantity += used_item_record.quantity
+    user_id = int(token.get("sub"))
+    inventory_item = used_item_record.inventory_item
+    original_item_quantity = inventory_item.quantity
+    returned_quantity = used_item_record.quantity
     
+    inventory_item.quantity += returned_quantity
+    
+    log_entry = InventoryAuditLog(
+        item_id=inventory_item.id,
+        user_id=user_id,
+        company_id=company_id,
+        action=AuditLogAction.quantity_adjusted,
+        details=(
+            f"Vráceno {returned_quantity} ks z úkolu ID: {task_id} zpět na sklad. "
+            f"Stav skladu změněn z {original_item_quantity} na {inventory_item.quantity}."
+        )
+    )
+    db.add(log_entry)
+
     await db.delete(used_item_record)
     await db.commit()
     return await get_full_task_or_404(work_order_id, task_id, db)
