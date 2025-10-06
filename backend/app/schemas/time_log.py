@@ -1,14 +1,17 @@
-# app/schemas/time_log.py
 from pydantic import BaseModel, ConfigDict, computed_field, model_validator
-from typing import Optional
-from datetime import datetime
+from typing import Optional, List
+from datetime import datetime, date
+
+from app.db.models import TimeLogStatus, TimeLogEntryType
 from .user import UserOut
 from .work_type import WorkTypeOut
-from app.db.models import TimeLogStatus, TimeLogEntryType
 from .work_order import WorkOrderOut
 from .task import TaskOut
 
+# --- Schémata pro vytváření a úpravu ---
+
 class NewTaskData(BaseModel):
+    """Data pro vytvoření nového úkolu přímo z time logu."""
     work_order_id: int
     name: str
 
@@ -44,10 +47,14 @@ class TimeLogCreateIn(TimeLogBase):
         return self
 
 class TimeLogUpdateIn(TimeLogBase):
-    pass # Pro jednoduchost bude úprava fungovat stejně jako vytvoření
+    # Při úpravě musíme vždy vědět, ke kterému úkolu se vztahuje, pokud je to práce
+    # Pro jednoduchost bude úprava fungovat jako nové vložení, které vyžaduje stejná data.
+    pass
 
 class TimeLogStatusUpdateIn(BaseModel):
     status: TimeLogStatus
+
+# --- Schémata pro zobrazování (výstup z API) ---
 
 class TaskPreviewForTimeLog(BaseModel):
     id: int
@@ -66,15 +73,16 @@ class TimeLogOut(TimeLogBase):
     @computed_field
     @property
     def duration_hours(self) -> float:
+        """Vypočítá celkovou délku v hodinách."""
         duration = self.end_time - self.start_time
         return round(duration.total_seconds() / 3600, 2)
 
     model_config = ConfigDict(from_attributes=True)
+
 class ServiceReportDataOut(BaseModel):
     """
     Struktura dat, která vrací kontext pro servisní/montážní list
     záznamu z docházky.
     """
-
     work_order: WorkOrderOut
     task: TaskOut
