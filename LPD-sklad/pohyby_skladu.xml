@@ -1,0 +1,136 @@
+<?xml version='1.0' encoding='utf-8'?>
+<PohybySkladu verze="1.0">
+	<Metadata>
+		<DatumExportu>2025-10-06T13:35:47.487937</DatumExportu>
+		<IDSpolecnosti>1</IDSpolecnosti>
+		<PocetZaznamu>9</PocetZaznamu>
+	</Metadata>
+	<SeznamPohybu>
+		<Pohyb id="16">
+			<CasovaZnacka>2025-10-06T11:07:59</CasovaZnacka>
+			<Akce>updated</Akce>
+			<Detail>Pole 'category_id' změněno z '13' na '10'.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>2</ID>
+				<Nazev>AD800AM</Nazev>
+				<SKU>345645</SKU>
+			</Polozka>
+		</Pohyb>
+		<Pohyb id="15">
+			<CasovaZnacka>2025-10-06T11:07:55</CasovaZnacka>
+			<Akce>updated</Akce>
+			<Detail>Pole 'category_id' změněno z '10' na '13'.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>2</ID>
+				<Nazev>AD800AM</Nazev>
+				<SKU>345645</SKU>
+			</Polozka>
+		</Pohyb>
+		<Pohyb id="14">
+			<CasovaZnacka>2025-10-06T11:02:32</CasovaZnacka>
+			<Akce>updated</Akce>
+			<Detail>Pole 'category_id' změněno z 'None' na '11'.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>1</ID>
+				<Nazev>Test Item</Nazev>
+				<SKU>ITEM-1759741969</SKU>
+			</Polozka>
+		</Pohyb>
+		<Pohyb id="13">
+			<CasovaZnacka>2025-10-06T11:02:28</CasovaZnacka>
+			<Akce>updated</Akce>
+			<Detail>Pole 'category_id' změněno z '2' na '10'.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>2</ID>
+				<Nazev>AD800AM</Nazev>
+				<SKU>345645</SKU>
+			</Polozka>
+		</Pohyb>
+		<Pohyb id="12">
+			<CasovaZnacka>2025-10-06T10:59:00</CasovaZnacka>
+			<Akce>updated</Akce>
+			<Detail>Pole 'category_id' změněno z 'None' na '2'.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>2</ID>
+				<Nazev>AD800AM</Nazev>
+				<SKU>345645</SKU>
+			</Polozka>
+		</Pohyb>
+		<Pohyb id="4">
+			<CasovaZnacka>2025-10-06T10:43:32</CasovaZnacka>
+			<Akce>updated</Akce>
+			<Detail>Pole 'description' změněno z 'None' na ''. | Pole 'price' změněno z 'None' na '234.0'. | Pole 'vat_rate' změněno z 'None' na '21.0'.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>2</ID>
+				<Nazev>AD800AM</Nazev>
+				<SKU>345645</SKU>
+			</Polozka>
+		</Pohyb>
+		<Pohyb id="3">
+			<CasovaZnacka>2025-10-06T10:34:55</CasovaZnacka>
+			<Akce>created</Akce>
+			<Detail>Položka 'AD800AM' byla vytvořena.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>2</ID>
+				<Nazev>AD800AM</Nazev>
+				<SKU>345645</SKU>
+			</Polozka>
+		</Pohyb>
+		<Pohyb id="2">
+			<CasovaZnacka>2025-10-06T09:51:00</CasovaZnacka>
+			<Akce>quantity_adjusted</Akce>
+			<Detail>Pole 'quantity' změněno z '95' na '100'.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>1</ID>
+				<Nazev>Test Item</Nazev>
+				<SKU>ITEM-1759741969</SKU>
+			</Polozka>
+		</Pohyb>
+		<Pohyb id="1">
+			<CasovaZnacka>2025-10-06T09:12:50</CasovaZnacka>
+			<Akce>created</Akce>
+			<Detail>Položka 'Test Item' byla vytvořena.</Detail>
+			<Uzivatel>
+				<ID>1</ID>
+				<Email>admin@admin.com</Email>
+			</Uzivatel>
+			<Polozka>
+				<ID>1</ID>
+				<Nazev>Test Item</Nazev>
+				<SKU>ITEM-1759741969</SKU>
+			</Polozka>
+		</Pohyb>
+	</SeznamPohybu>
+</PohybySkladu>

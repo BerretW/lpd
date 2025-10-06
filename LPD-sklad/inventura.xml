@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Inventura verze="1.0">
+	<Metadata>
+		<DatumExportu>2025-10-06T13:35:44.868237</DatumExportu>
+		<IDSpolecnosti>1</IDSpolecnosti>
+		<PocetPolozek>2</PocetPolozek>
+	</Metadata>
+	<SeznamPolozek>
+		<Polozka id="2">
+			<Nazev>AD800AM</Nazev>
+			<SKU>345645</SKU>
+			<EAN>5678976545678</EAN>
+			<Popis />
+			<MnozstviNaSklade>0</MnozstviNaSklade>
+			<Cena>234.0</Cena>
+			<Kategorie>
+				<ID>10</ID>
+				<Nazev>GB</Nazev>
+			</Kategorie>
+		</Polozka>
+		<Polozka id="1">
+			<Nazev>Test Item</Nazev>
+			<SKU>ITEM-1759741969</SKU>
+			<MnozstviNaSklade>102</MnozstviNaSklade>
+			<Cena>150.0</Cena>
+			<Kategorie>
+				<ID>11</ID>
+				<Nazev>PIR</Nazev>
+			</Kategorie>
+		</Polozka>
+	</SeznamPolozek>
+</Inventura>

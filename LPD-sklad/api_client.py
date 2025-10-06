@@ -112,3 +112,15 @@ class ApiClient:
         except requests.exceptions.RequestException as e:
             print(f"Chyba při vytváření kategorie: {e}")
             return None
+        
+    def get_audit_logs(self, limit: int = 5000) -> Optional[List[Dict[str, Any]]]:
+        """Získá historii pohybů ve skladu."""
+        try:
+            # Pro export chceme co nejvíce záznamů najednou
+            endpoint = f"/companies/{self.company_id}/audit-logs?limit={limit}"
+            response = self._make_request("GET", endpoint)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při načítání auditních logů: {e}")
+            return None
