@@ -70,19 +70,59 @@ def run_tests():
     company_billing_payload = {"ico": "12345678", "dic": "CZ12345678", "address": "Testovací 1, Praha"}
     print_result(requests.patch(f"{BASE_URL}/companies/{company_id}/billing", json=company_billing_payload, headers=get_headers()), 200)
 
-    print("  - Creating and updating client billing info...")
+    print("  - Creating client...")
     client_payload = {"name": "Billing Client", "ico": "87654321"}
     client_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/clients", json=client_payload, headers=get_headers()), 201)
     client_id = client_data["id"]
     
-    # 3. Nastavení kontextu pro práci
-    print_step("3. Setting up Work Context")
+    # 3. Nastavení skladu a práce
+    print_step("3. Setting up Inventory and Work Types")
     item_payload = {"name": "Test Item", "sku": f"ITEM-{timestamp}", "quantity": 100, "price": 150.0}
     item_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory", json=item_payload, headers=get_headers()), 201)
     item_id = item_data["id"]
     work_type_payload = {"name": "Test Work", "rate": 1000.0}
     work_type_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-types", json=work_type_payload, headers=get_headers()), 201)
     work_type_id = work_type_data["id"]
+
+    # --- NOVÁ SEKCE ---
+    # 4. Testování správy kategorií
+    print_step("4. Category Management Testing")
+    print("  - Creating top-level category...")
+    top_cat_payload = {"name": "Top Category"}
+    top_cat_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/categories", json=top_cat_payload, headers=get_headers()), 201)
+    top_cat_id = top_cat_data["id"]
+
+    print("  - Creating sub-category...")
+    sub_cat_payload = {"name": "Sub Category", "parent_id": top_cat_id}
+    sub_cat_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/categories", json=sub_cat_payload, headers=get_headers()), 201)
+    sub_cat_id = sub_cat_data["id"]
+    
+    print("  - Verifying category tree structure...")
+    categories_tree = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/categories", headers=get_headers()), 200)
+    assert len(categories_tree) == 1, "Should be one top-level category"
+    assert categories_tree[0]['id'] == top_cat_id, "Top category ID mismatch"
+    assert len(categories_tree[0]['children']) == 1, "Should have one sub-category"
+    assert categories_tree[0]['children'][0]['id'] == sub_cat_id, "Sub-category ID mismatch"
+    
+    print("  - Attempting to delete non-empty category (should fail)...")
+    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/categories/{top_cat_id}", headers=get_headers()), 400)
+    
+    print("  - Assigning item to a category...")
+    print_result(requests.patch(f"{BASE_URL}/companies/{company_id}/inventory/{item_id}", json={"category_id": sub_cat_id}, headers=get_headers()), 200)
+    
+    print("  - Attempting to delete category with an item (should fail)...")
+    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/categories/{sub_cat_id}", headers=get_headers()), 400)
+
+    print("  - Unassigning item from category...")
+    print_result(requests.patch(f"{BASE_URL}/companies/{company_id}/inventory/{item_id}", json={"category_id": None}, headers=get_headers()), 200)
+
+    print("  - Deleting categories in correct order...")
+    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/categories/{sub_cat_id}", headers=get_headers()), 204)
+    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/categories/{top_cat_id}", headers=get_headers()), 204)
+    # --- KONEC NOVÉ SEKCE ---
+
+    # 5. Vytvoření zakázky a úkolu
+    print_step("5. Creating Work Order and Task")
     wo_payload = {"name": "Test Work Order", "client_id": client_id}
     wo_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders", json=wo_payload, headers=get_headers()), 201)
     work_order_id = wo_data["id"]
@@ -90,8 +130,8 @@ def run_tests():
     task_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks", json=task_payload, headers=get_headers()), 201)
     task_id = task_data["id"]
 
-    # 4. Testování Docházky
-    print_step("4. Advanced Timesheet Testing")
+    # 6. Testování Docházky
+    print_step("6. Advanced Timesheet Testing")
     test_date = date.today()
     print("  - Logging and splitting a work block...")
     start_work = datetime.combine(test_date, datetime.min.time()).replace(hour=8)
@@ -110,8 +150,8 @@ def run_tests():
     day_logs.sort(key=lambda x: x['start_time'])
     log_to_process_id = day_logs[0]['id']
 
-    # 5. Testování Reportů
-    print_step("5. Reports Testing")
+    # 7. Testování Reportů
+    print_step("7. Reports Testing")
     print("  - Generating Service Report...")
     service_report = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/time-logs/{log_to_process_id}/service-report-data", headers=get_headers()), 200)
     assert service_report['work_order']['id'] == work_order_id
@@ -129,12 +169,6 @@ def run_tests():
     end_date_str = (test_date + timedelta(days=1)).isoformat()
     client_report = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/clients/{client_id}/billing-report?start_date={start_date_str}&end_date={end_date_str}", headers=get_headers()), 200)
     assert client_report["grand_total"] == wo_report["grand_total"], "Client report total should match work order total."
-    
-    # 6. Úklid
-    # print_step("6. Cleaning up")
-    # # Endpoint pro smazání zakázky zatím nemáme, ale můžeme smazat úkol a klienta
-    # print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}", headers=get_headers()), 204)
-    # print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/clients/{client_id}", headers=get_headers()), 204)
     
     print("\n" + "="*50)
     print("\033[92mAll tests completed successfully!\033[0m")

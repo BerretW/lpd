@@ -1,187 +1,100 @@
-# API Dokumentace pro Sklad a Zakázky
+# Backend pro Správu Skladu a Zakázek
 
-**Vítejte v dokumentaci k backendu! Toto API vám umožní spravovat firmy, uživatele, skladové hospodářství, klienty a zakázky.**
+Robustní backendový systém postavený na frameworku FastAPI, navržený pro efektivní správu firem, klientů, skladových zásob, zakázek a sledování času zaměstnanců.
 
-**Základní URL:** **Všechny cesty v této dokumentaci vycházejí z base URL vaší aplikace. Pro lokální vývoj to bude typicky** **http://localhost:8000**. Pro automaticky generovanou interaktivní dokumentaci navštivte **/docs**.
+## Klíčové vlastnosti
 
-## 1. Začínáme: Autentizace
+*   **Multi-tenancy architektura:** Systém je navržen pro správu více oddělených firem.
+*   **Autentizace a Autorizace:** Zabezpečení pomocí JWT tokenů s rolemi (vlastník, admin, člen).
+*   **Správa Skladu:** Tvorba a správa skladových položek, vnořených kategorií a sledování stavu zásob.
+*   **Řízení Zakázek:** Kompletní životní cyklus od správy klientů po tvorbu zakázek a jejich úkolů.
+*   **Sledování Času (Timesheety):** Zaměstnanci mohou zaznamenávat odpracovaný čas k jednotlivým úkolům, včetně rozlišení typů práce (práce, lékař, dovolená...).
+*   **Fakturační Podklady:** Automatické generování agregovaných reportů pro fakturaci na úrovni zakázky i klienta za zvolené období.
+*   **Auditní Log:** Detailní sledování všech změn ve skladu (vytvoření, úpravy, smazání) pro zajištění plné transparentnosti a dohledatelnosti.
 
- **Každý požadavek (kromě registrace a přihlášení) musí být** **autentizovaný**. To znamená, že musí obsahovat speciální **Authorization** **hlavičku s tokenem, který získáte po přihlášení.**
+## Použité technologie
 
-### 1.1. První krok: Registrace firmy a admina
+*   **Backend:** Python 3.12, FastAPI
+*   **Databáze:** MySQL 8 (s asynchronním ovladačem `asyncmy`)
+*   **ORM:** SQLAlchemy 2.0 (v asynchronním režimu)
+*   **Kontejnerizace:** Docker, Docker Compose
 
-**Tento endpoint je potřeba zavolat jen jednou na začátku, aby se vytvořila první firma a její hlavní administrátor.**
+## Předpoklady pro spuštění
 
-* **Endpoint:** **POST /auth/register_company**
-* **Autorizace:** **Není potřeba.**
-* **Tělo požadavku (Payload):**
-
-  **code**JSON
-
-  ```
-  {
-    "company_name": "Moje Nová Firma",
-    "slug": "moje-nova-firma",
-    "admin_email": "admin@mojefirma.cz",
-    "admin_password": "SuperSilneHeslo123",
-    "logo_url": "http://example.com/logo.png"
-  }
-  ```
-
-### 1.2. Přihlášení a získání tokenu
-
- **Jakmile existuje uživatel, může se přihlásit a získat** **přístupový token (JWT)**.
-
-* **Endpoint:** **POST /auth/login**
-* **Autorizace:** **Není potřeba.**
-* **Tělo požadavku (Payload):**
-
-  **code**JSON
-
-  ```
-  {
-    "email": "admin@mojefirma.cz",
-    "password": "SuperSilneHeslo123"
-  }
-  ```
-* **Odpověď (200 OK):**
-
-  **code**JSON
-
-  ```
-  {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "token_type": "bearer"
-  }
-  ```
-
-### 1.3. Použití Access Tokenu
-
-**Token z pole** **access_token** **si uložte. Každý další požadavek na chráněné části API musí tento token obsahovat v** **Authorization** **hlavičce.**
-
-**Příklad hlavičky:** **Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...**
-
-## 2. Obecné koncepty
-
-* **Chybové stavy:**
-
-  * **401 Unauthorized**: Chybí platný **Authorization** **token.**
-  * **403 Forbidden**: Jste přihlášení, ale snažíte se přistoupit k datům cizí firmy.
-  * **404 Not Found**: Položka (klient, zakázka, ...), kterou hledáte, neexistuje.
-  * **422 Unprocessable Entity**: Poslali jste nevalidní data. V odpovědi bude detail, co je špatně.
-* **{company_id}** **v URL:** **Většina cest obsahuje** **{company_id}**. Toto ID určuje, ve které firmě právě pracujete a musíte ho do URL vždy správně dosadit.
+*   Nainstalovaný Python 3.12+
+*   Nainstalovaný Docker a Docker Compose
 
 ---
 
-## 3. Moduly API (Endpointy)
+## Instalace a spuštění
 
-### 3.1. Správa Klientů
+Máte dvě možnosti, jak aplikaci spustit: pomocí Dockeru (doporučeno pro jednoduchost a produkční nasazení) nebo lokálně (ideální pro vývoj).
 
-| **Metoda** | **Endpoint**                                    | **Popis**                                         |
-| ---------------- | ----------------------------------------------------- | ------------------------------------------------------- |
-| **GET**    | **/companies/{company_id}/clients**             | **Získá seznam všech klientů dané firmy.**   |
-| **POST**   | **/companies/{company_id}/clients**             | **Vytvoří nového klienta.**                    |
-| **GET**    | **/companies/{company_id}/clients/{client_id}** | **Získá detail jednoho konkrétního klienta.** |
-| **PATCH**  | **/companies/{company_id}/clients/{client_id}** | **Upraví existujícího klienta.**               |
-| **DELETE** | **/companies/{company_id}/clients/{client_id}** | **Smaže klienta.**                               |
+### 1. Spuštění pomocí Dockeru (doporučeno)
 
-### 3.2. Správa Zakázek (Work Orders)
+1.  **Klonujte repozitář:**
+    ```bash
+    git clone <URL_VASEHO_REPOZITARE>
+    cd backend
+    ```
 
-| Metoda | Endpoint | Popis |
-|---|---|---|
-| `POST` | `/companies/{company_id}/work-orders` | Vytvoří novou zakázku. |
-| `GET` | `/companies/{company_id}/work-orders` | Získá seznam všech zakázek firmy. |
-| `GET` | `/companies/{company_id}/work-orders/{work_order_id}` | Získá detail zakázky, včetně seznamu jejích úkolů. |
-| `GET` | `/companies/{company_id}/work-orders/{work_order_id}/billing-report` | **(Nový)** Získá agregované podklady pro fakturaci. Lze filtrovat (`?start_date=YYYY-MM-DD`). |
-| `PATCH`| `/companies/{company_id}/work-orders/{work_order_id}` | Upraví základní údaje zakázky. |
-| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/status`| Změní stav zakázky (uzavření/znovuotevření). |
-| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/copy` | Vytvoří kompletní kopii zakázky včetně všech úkolů. |
+2.  **Vytvořte a nastavte `.env` soubor:**
+    Zkopírujte soubor `.env.example` jako `.env`. V souboru `.env` je potřeba nastavit správný `DATABASE_URL` pro komunikaci s databází v Dockeru. Použijte hodnoty z `docker-compose.yml`:
+    ```env
+    DATABASE_URL=mysql+asyncmy://root:775695905@db:3306/database3
+    JWT_SECRET=zmente-toto-tajemstvi-v-produkci
+    JWT_EXPIRE_MINUTES=120
+    ```
 
-### 3.3. Správa Úkolů (Tasks)
+3.  **Spusťte kontejnery:**
+    ```bash
+    docker-compose up --build -d
+    ```
 
-Úkoly jsou vždy podřízené konkrétní zakázce.
+4.  **Hotovo!** API je nyní dostupné na adrese `http://localhost:8020`. Interaktivní dokumentace (Swagger UI) je na `http://localhost:8020/docs`.
 
-| Metoda | Endpoint | Popis |
-|---|---|---|
-| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/tasks` | Vytvoří nový úkol v rámci existující zakázky. |
-| `GET` | `/companies/{company_id}/work-orders/{work_order_id}/tasks` | Získá seznam všech úkolů v zakázce. |
-| `GET` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}` | Získá detail jednoho konkrétního úkolu. |
-| `PATCH` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}` | Aktualizuje název, popis nebo status úkolu. |
-| `DELETE` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}` | Smaže úkol (včetně jeho záznamů o práci a materiálu). |
-| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/assign` | Přiřadí nebo odebere zaměstnance z úkolu. |
-| `POST` | `/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory` | Zapíše použitý materiál ze skladu. **Sníží stav!** |
+### 2. Lokální spuštění (pro vývoj)
 
-### 3.4. Správa Skladu (Inventory)
+Tato metoda vyžaduje lokálně běžící instanci MySQL databáze.
 
-| **Metoda** | **Endpoint**                                                 | **Popis**                                                                  |
-| ---------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| **POST**   | **/companies/{company_id}/inventory**                        | **Vytvoří novou položku ve skladu.**                                    |
-| **GET**    | **/companies/{company_id}/inventory**                        | **Získá seznam položek. Lze filtrovat (**?category_id=X**).**           |
-| **GET**    | **/companies/{company_id}/inventory/by-ean/{ean}**           | **Najde jednu položku podle EAN kódu.**                                  |
-| **GET**    | **/companies/{company_id}/inventory/{item_id}**              | **Získá detail jedné skladové položky.**                              |
-| **PATCH**  | **/companies/{company_id}/inventory/{item_id}**              | **Upraví skladovou položku.**                                            |
-| **POST**   | **/companies/{company_id}/inventory/{item_id}/upload-image** | **Nahraje obrázek k položce (vyžaduje** **multipart/form-data**). |
+1.  **Spusťte lokální MySQL server** a vytvořte v něm databázi (např. s názvem `database`).
 
+2.  **Spusťte `start.bat` (pro Windows):**
+    Tento skript se postará o vytvoření virtuálního prostředí, instalaci závislostí a spuštění vývojového serveru. Před spuštěním si v něm upravte proměnnou `DATABASE_URL` tak, aby odpovídala vaší lokální databázi.
 
-### 3.5. Skladové Kategorie
+3.  **Manuální postup (pro Linux/macOS):**
+    ```bash
+    # Vytvoření a aktivace virtuálního prostředí
+    python3 -m venv venv
+    source venv/bin/activate
 
-| **Metoda** | **Endpoint**                                         | **Popis**                                            |
-| ---------------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
-| **GET**    | **/companies/{company_id}/categories**               | **Získá stromovou strukturu kategorií.**          |
-| **POST**   | **/companies/{company_id}/categories**               | **Vytvoří novou kategorii (i jako podkategorii).** |
-| **DELETE** | **/companies/{company_id}/categories/{category_id}** | **Smaže kategorii (pouze pokud je prázdná).**     |
+    # Instalace závislostí
+    pip install -r requirements.txt
 
-### 3.6. Druhy Práce (Work Types)
+    # Nastavení proměnných prostředí
+    export DATABASE_URL="mysql+asyncmy://UZIVATEL:HESLO@localhost:3306/NAZEV_DB"
+    export JWT_SECRET="super-tajny-klic-pro-lokalni-vyvoj"
+    export JWT_EXPIRE_MINUTES=120
 
-**Nastavení ceníku prací pro firmu.**
+    # Spuštění vývojového serveru
+    uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+    ```
 
-| **Metoda** | **Endpoint**                           | **Popis**                                               |
-| ---------------- | -------------------------------------------- | ------------------------------------------------------------- |
-| **GET**    | **/companies/{company_id}/work-types** | **Získá seznam všech druhů práce a jejich sazeb.** |
-| **POST**   | **/companies/{company_id}/work-types** | **Vytvoří nový druh práce.**                        |
-
-### 3.7. Správa Odpracovaných Hodin (Timesheets)
-
-**Endpointy pro zaměstnance a manažery ke správě a schvalování odpracovaného času.**
-
-| Metoda | Endpoint | Popis |
-|---|---|---|
-| `POST` | `/companies/{company_id}/time-logs` | Vytvoří nový záznam času. |
-| `GET` | `/companies/{company_id}/time-logs` | Získá seznam záznamů pro daný den a uživatele. |
-| `GET` | `/companies/{company_id}/time-logs/{time_log_id}/service-report-data` | **(Nový)** Získá kompletní detail související zakázky a úkolu. |
-| `PATCH`| `/companies/{company_id}/time-logs/{time_log_id}`| Umožní uživateli upravit svůj neschválený záznam. |
-| `DELETE`| `/companies/{company_id}/time-logs/{time_log_id}`| Umožní uživateli smazat svůj neschválený záznam. |
-| `POST` | `/companies/{company_id}/time-logs/{time_log_id}/status`| **(Pro adminy)** Změní stav záznamu. |                       |
-
-### 3.8. Auditní Log Skladu
-
-Endpoint pro zobrazení historie všech změn ve skladu (vytvoření, úpravy, smazání položek). Přístupný pouze pro administrátory.
-
-| Metoda | Endpoint | Popis |
-|---|---|---|
-| `GET` | `/companies/{company_id}/audit-logs` | Získá seznam záznamů z historie. Výsledky jsou stránkované (`?skip=0&limit=100`). |
-
-**Dostupné filtry (Query Parametry):**
-
-Všechny filtry lze kombinovat.
-
-*   `?item_id=_int_`: Zobrazí historii pouze pro jednu konkrétní skladovou položku.
-*   `?user_id=_int_`: Zobrazí všechny akce provedené jedním konkrétním uživatelem.
-*   `?start_date=YYYY-MM-DD`: Filtruje záznamy od tohoto data včetně.
-*   `?end_date=YYYY-MM-DD`: Filtruje záznamy do tohoto data včetně.
-
-**Příklad použití:**
-`GET /companies/1/audit-logs?item_id=42&start_date=2025-10-01`
-Tento požadavek vrátí všechny pohyby na položce s ID 42, které se staly od 1. října 2025.
+4.  **Hotovo!** API je nyní dostupné na `http://localhost:8000`. Interaktivní dokumentace je na `http://localhost:8000/docs`.
 
 ---
 
-## 4. Typický postup (Workflow) pro frontend
+## Testování
 
-* **Uživatel se** **přihlásí** **(**/auth/login**) a vy si** **uložíte token**.
-* **Získáte seznam** **klientů** **a** **zakázek**, abyste je mohli zobrazit v přehledu.
-* **Uživatel klikne na "Nová zakázka". Zobrazíte mu formulář, kde si může vybrat z načteného seznamu** **klientů**. Data odešlete na **POST /work-orders**.
-* **Uživatel otevře detail zakázky. Chce přidat úkol. Odešlete data na** **POST /work-orders/{work_order_id}/tasks**.
-* **Uživatel chce k úkolu zapsat práci. Vy mu nejprve načtete a zobrazíte dostupné druhy práce (**GET /work-types**). Po výběru a zadání hodin odešlete data na** **POST /time-logs**.
-* **Uživatel chce k úkolu přidat materiál. Pomocí** **GET /inventory** **mu umožníte najít položku. Po výběru a zadání kusů odešlete data na** **POST /work-orders/{work_order_id}/tasks/{task_id}/inventory**.
-* **Manažer chce schválit práci. Načte si** **GET /time-logs** **(s filtrem) a pro každý záznam volá** **POST /time-logs/{time_log_id}/status**.
+Projekt obsahuje integrační testy v souboru `tests.py`, které ověřují klíčové scénáře.
+
+1.  Ujistěte se, že backendový server běží (buď lokálně nebo v Dockeru).
+2.  Pokud testujete proti Dockeru, upravte `BASE_URL` v `tests.py` na `http://127.0.0.1:8020`.
+3.  Spusťte testy:
+    ```bash
+    python tests.py
+    ```
+
+## Dokumentace API
+
+Detailní popis všech dostupných API endpointů, včetně příkladů, naleznete v souboru **`API_DOCS.md`**.

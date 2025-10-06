@@ -1,3 +1,4 @@
+# backend/app/routers/inventory.py
 import shutil
 import uuid
 from pathlib import Path
@@ -10,25 +11,18 @@ from sqlalchemy.orm import selectinload
 from app.db.database import get_db
 from app.db.models import InventoryItem, InventoryAuditLog, AuditLogAction, InventoryCategory
 from app.schemas.inventory import InventoryItemCreateIn, InventoryItemOut, InventoryItemUpdateIn
-from app.routers.companies import require_company_access
+from app.core.dependencies import require_company_access, require_admin_access
 
-# --- Konfigurace pro nahrávání souborů ---
 UPLOAD_DIRECTORY = Path("static/images/inventory")
-UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)  # Jistota, že složka existuje
+UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
-# --- Pomocné funkce a závislosti ---
-
-def require_inventory_editor_access(payload: Dict[str, Any] = Depends(require_company_access)):
-    """Závislost pro ověření oprávnění pro úpravy skladu."""
-    # Zde by byla logika pro ověření, že uživatel má roli admin/owner
-    return payload
+# --- Pomocné funkce ---
 
 async def get_item_or_404(item_id: int, company_id: int, db: AsyncSession) -> InventoryItem:
-    """Načte položku skladu nebo vyvolá chybu 404, pokud neexistuje nebo nepatří dané firmě."""
+    # ... (beze změny)
     stmt = (
         select(InventoryItem)
         .where(and_(InventoryItem.id == item_id, InventoryItem.company_id == company_id))
-        .options(selectinload(InventoryItem.category))
     )
     result = await db.execute(stmt)
     item = result.scalar_one_or_none()
@@ -37,43 +31,76 @@ async def get_item_or_404(item_id: int, company_id: int, db: AsyncSession) -> In
     return item
 
 async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryItem:
-    """Pomocná funkce pro načtení položky s VŠEMI potřebnými vnořenými vztahy pro API odpověď."""
+    """Načte položku se VŠEMI potřebnými vnořenými vztahy."""
     stmt = (
         select(InventoryItem)
         .where(InventoryItem.id == item_id)
+        # --- OPRAVA ZDE: Prohloubení rekurzivního načítání ---
         .options(
-            selectinload(InventoryItem.category).selectinload(InventoryCategory.children)
+            selectinload(InventoryItem.category)
+            .selectinload(InventoryCategory.children)
+            .selectinload(InventoryCategory.children)
+            .selectinload(InventoryCategory.children)
         )
     )
     result = await db.execute(stmt)
     item = result.scalar_one_or_none()
     if not item:
-        # Toto by se nemělo stát, pokud je voláno hned po vytvoření/úpravě, ale pro jistotu
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Could not reload inventory item.")
     return item
 
 # --- API Router ---
-
 router = APIRouter(prefix="/companies/{company_id}/inventory", tags=["inventory"])
+
+# ... (POST create_inventory_item beze změny, již volá get_full_inventory_item)
+
+@router.get("", response_model=List[InventoryItemOut])
+async def list_inventory_items(
+    company_id: int,
+    category_id: int | None = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access)
+):
+    stmt = (
+        select(InventoryItem)
+        .where(InventoryItem.company_id == company_id)
+        # --- OPRAVA ZDE: Prohloubení i pro seznam položek ---
+        .options(
+            selectinload(InventoryItem.category)
+            .selectinload(InventoryCategory.children)
+            .selectinload(InventoryCategory.children)
+            .selectinload(InventoryCategory.children)
+        )
+        .offset(skip).limit(limit)
+    )
+    if category_id is not None:
+        stmt = stmt.where(InventoryItem.category_id == category_id)
+    
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+# ... (ostatní endpointy zůstávají stejné, protože na konci volají get_full_inventory_item)
+
+# ... (zbytek souboru inventory.py může zůstat, jak byl v mé předchozí odpovědi)
 
 @router.post(
     "",
     response_model=InventoryItemOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Vytvoření nové položky ve skladu"
+    summary="Vytvoření nové položky ve skladu (pouze pro adminy)"
 )
 async def create_inventory_item(
     company_id: int,
     payload: InventoryItemCreateIn,
     db: AsyncSession = Depends(get_db),
-    token: Dict[str, Any] = Depends(require_inventory_editor_access)
+    token: Dict[str, Any] = Depends(require_admin_access)
 ):
-    """Vytvoří novou položku ve skladu a vrátí ji s plně načtenými daty."""
     stmt = select(InventoryItem).where(
         and_(InventoryItem.company_id == company_id, InventoryItem.sku == payload.sku)
     )
-    result = await db.execute(stmt)
-    if result.scalar_one_or_none():
+    if (await db.execute(stmt)).scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Item with SKU '{payload.sku}' already exists.")
 
     item = InventoryItem(**payload.dict(), company_id=company_id)
@@ -83,39 +110,13 @@ async def create_inventory_item(
     user_id = int(token.get("sub"))
     log = InventoryAuditLog(
         item_id=item.id, user_id=user_id, company_id=company_id,
-        action=AuditLogAction.created,
-        details=f"Položka '{item.name}' byla vytvořena."
+        action=AuditLogAction.created, details=f"Položka '{item.name}' byla vytvořena."
     )
     db.add(log)
     await db.commit()
 
-    full_item = await get_full_inventory_item(item.id, db)
-    return full_item
+    return await get_full_inventory_item(item.id, db)
 
-@router.get(
-    "",
-    response_model=List[InventoryItemOut],
-    summary="Získání seznamu všech položek ve skladu"
-)
-async def list_inventory_items(
-    company_id: int,
-    category_id: int | None = None,
-    skip: int = 0,
-    limit: int = 100,
-    db: AsyncSession = Depends(get_db),
-    _=Depends(require_company_access)
-):
-    """Vrátí seznam skladových položek s možností stránkování a filtrování podle kategorie."""
-    stmt = (
-        select(InventoryItem)
-        .where(InventoryItem.company_id == company_id)
-        .options(selectinload(InventoryItem.category).selectinload(InventoryCategory.children))
-        .offset(skip).limit(limit)
-    )
-    if category_id is not None:
-        stmt = stmt.where(InventoryItem.category_id == category_id)
-    result = await db.execute(stmt)
-    return result.scalars().all()
 
 @router.get(
     "/by-ean/{ean}",
@@ -128,17 +129,15 @@ async def get_inventory_item_by_ean(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    """Najde a vrátí jednu skladovou položku na základě jejího EAN kódu."""
     stmt = (
         select(InventoryItem)
         .where(and_(InventoryItem.company_id == company_id, InventoryItem.ean == ean))
-        .options(selectinload(InventoryItem.category).selectinload(InventoryCategory.children))
     )
-    result = await db.execute(stmt)
-    item = result.scalar_one_or_none()
+    item = (await db.execute(stmt)).scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Item with EAN '{ean}' not found.")
-    return item
+    
+    return await get_full_inventory_item(item.id, db)
 
 @router.get(
     "/{item_id}",
@@ -151,22 +150,21 @@ async def get_inventory_item(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    """Vrátí detail jedné skladové položky podle jejího ID."""
+    await get_item_or_404(item_id, company_id, db)
     return await get_full_inventory_item(item_id, db)
 
 @router.post(
     "/{item_id}/upload-image",
     response_model=InventoryItemOut,
-    summary="Nahrání obrázku k položce ve skladu"
+    summary="Nahrání obrázku k položce (pouze pro adminy)"
 )
 async def upload_inventory_item_image(
     company_id: int,
     item_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    token: Dict[str, Any] = Depends(require_inventory_editor_access)
+    token: Dict[str, Any] = Depends(require_admin_access)
 ):
-    """Nahraje obrázek k položce a vrátí její plný detail."""
     if not file.content_type.startswith("image/"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid file type.")
 
@@ -175,11 +173,8 @@ async def upload_inventory_item_image(
     file_extension = Path(file.filename).suffix
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     file_path = UPLOAD_DIRECTORY / unique_filename
-    try:
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    finally:
-        file.file.close()
+    with file_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
     original_image_url = item.image_url
     item.image_url = f"/static/images/inventory/{unique_filename}"
@@ -193,23 +188,20 @@ async def upload_inventory_item_image(
     db.add(log)
     await db.commit()
     
-    full_item = await get_full_inventory_item(item.id, db)
-    return full_item
+    return await get_full_inventory_item(item.id, db)
 
 @router.patch(
     "/{item_id}",
     response_model=InventoryItemOut,
-    summary="Aktualizace skladové položky"
+    summary="Aktualizace skladové položky (pouze pro adminy)"
 )
 async def update_inventory_item(
     company_id: int,
     item_id: int,
     payload: InventoryItemUpdateIn,
     db: AsyncSession = Depends(get_db),
-    token: Dict[str, Any] = Depends(require_inventory_editor_access)
+    token: Dict[str, Any] = Depends(require_admin_access)
 ):
-    """Aktualizuje vlastnosti položky a vrátí její plný detail."""
-    # Zde použijeme get_item_or_404, protože nepotřebujeme plná data pro úpravu
     item = await get_item_or_404(item_id, company_id, db)
     user_id = int(token.get("sub"))
     
@@ -235,21 +227,19 @@ async def update_inventory_item(
         db.add(log)
         await db.commit()
     
-    full_item = await get_full_inventory_item(item.id, db)
-    return full_item
+    return await get_full_inventory_item(item.id, db)
 
 @router.delete(
     "/{item_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Smazání skladové položky"
+    summary="Smazání skladové položky (pouze pro adminy)"
 )
 async def delete_inventory_item(
     company_id: int,
     item_id: int,
     db: AsyncSession = Depends(get_db),
-    token: Dict[str, Any] = Depends(require_inventory_editor_access)
+    token: Dict[str, Any] = Depends(require_admin_access)
 ):
-    """Trvale odstraní položku ze skladu."""
     item = await get_item_or_404(item_id, company_id, db)
     user_id = int(token.get("sub"))
     

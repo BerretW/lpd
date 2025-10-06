@@ -1,3 +1,4 @@
+# app/routers/categories.py
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db.database import get_db
 from app.db.models import InventoryCategory, InventoryItem
 from app.schemas.category import CategoryCreateIn, CategoryOut, CategoryUpdateIn
-from app.routers.companies import require_company_access
+from app.core.dependencies import require_company_access
 
 router = APIRouter(prefix="/companies/{company_id}/categories", tags=["inventory-categories"])
 
@@ -19,11 +20,9 @@ async def create_category(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    """Vytvoří novou kategorii nebo podkategorii."""
     category = InventoryCategory(**payload.dict(), company_id=company_id)
     db.add(category)
     await db.commit()
-    # OPRAVA ZDE: Explicitně řekneme, aby se načetl i vztah 'children'
     await db.refresh(category, attribute_names=['children'])
     return category
 
@@ -34,11 +33,16 @@ async def list_categories(
     _=Depends(require_company_access)
 ):
     """Vrátí stromovou strukturu všech kategorií pro danou firmu."""
-    # Tento endpoint je již v pořádku, protože používá selectinload
     stmt = (
         select(InventoryCategory)
         .where(InventoryCategory.company_id == company_id, InventoryCategory.parent_id == None)
-        .options(selectinload(InventoryCategory.children))
+        # --- OPRAVA ZDE: Prohloubení rekurzivního načítání na 4 úrovně ---
+        .options(
+            selectinload(InventoryCategory.children)
+            .selectinload(InventoryCategory.children)
+            .selectinload(InventoryCategory.children)
+            .selectinload(InventoryCategory.children)
+        )
     )
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -51,10 +55,8 @@ async def update_category(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    """Aktualizuje název nebo rodiče kategorie."""
     stmt = select(InventoryCategory).where(InventoryCategory.id == category_id, InventoryCategory.company_id == company_id)
-    result = await db.execute(stmt)
-    category = result.scalar_one_or_none()
+    category = (await db.execute(stmt)).scalar_one_or_none()
     
     if not category:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found")
@@ -64,10 +66,8 @@ async def update_category(
         setattr(category, key, value)
     
     await db.commit()
-    # OPRAVA ZDE: Explicitně řekneme, aby se načetl i vztah 'children'
     await db.refresh(category, attribute_names=['children'])
     return category
-
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
@@ -76,23 +76,17 @@ async def delete_category(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    """Smaže kategorii. Lze smazat pouze kategorii, která nemá žádné podkategorie ani položky."""
-    # Zkontrolujeme, zda kategorie nema podkategorie
     stmt_children = select(InventoryCategory.id).where(InventoryCategory.parent_id == category_id).limit(1)
-    has_children = (await db.execute(stmt_children)).scalar_one_or_none()
-    if has_children:
+    if (await db.execute(stmt_children)).scalar_one_or_none():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot delete category with sub-categories.")
 
-    # Zkontrolujeme, zda v kategorii nejsou nejake polozky
     stmt_items = select(InventoryItem.id).where(InventoryItem.category_id == category_id).limit(1)
-    has_items = (await db.execute(stmt_items)).scalar_one_or_none()
-    if has_items:
+    if (await db.execute(stmt_items)).scalar_one_or_none():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot delete category that contains inventory items.")
 
-    stmt = select(InventoryCategory).where(InventoryCategory.id == category_id, InventoryCategory.company_id == company_id)
-    result = await db.execute(stmt)
-    category = result.scalar_one_or_none()
-
+    category = (await db.execute(select(InventoryCategory).where(InventoryCategory.id == category_id, InventoryCategory.company_id == company_id))).scalar_one_or_none()
     if category:
         await db.delete(category)
         await db.commit()
+    else:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found")
