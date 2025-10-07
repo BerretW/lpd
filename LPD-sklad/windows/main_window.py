@@ -9,7 +9,6 @@ import qtawesome as qta
 from styling import MAIN_STYLESHEET
 from .item_dialog import ItemDialog
 from .category_dialog import CategoryDialog
-# --- ZMĚNA: Importujeme nový exporter ---
 from xls_exporter import export_inventory_to_xls, export_audit_logs_to_xls
 
 class MainWindow(QMainWindow):
@@ -33,11 +32,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Přihlášen jako: {api_client.user_email}")
 
     def _setup_ui(self):
-        # --- Horní panel s tlačítky ---
+        # ... (UI setup zůstává stejný)
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(0, 0, 0, 10)
-
-        # Skupina pro správu dat
         data_group = QGroupBox("Správa dat")
         data_layout = QHBoxLayout(data_group)
         self.add_button = QPushButton(qta.icon('fa5s.plus-circle'), " Nová položka")
@@ -48,23 +45,17 @@ class MainWindow(QMainWindow):
         data_layout.addWidget(self.edit_button)
         data_layout.addWidget(self.refresh_button)
         data_layout.addWidget(self.categories_button)
-
-        # Skupina pro Import / Export
         io_group = QGroupBox("Import / Export do XLS")
         io_layout = QHBoxLayout(io_group)
         self.import_xls_button = QPushButton(qta.icon('fa5s.file-upload'), " Importovat sklad")
-        # --- ZMĚNA: Přejmenování tlačítek ---
         self.export_inventory_button = QPushButton(qta.icon('fa5s.file-excel'), " Exportovat inventuru")
         self.export_movements_button = QPushButton(qta.icon('fa5s.file-excel'), " Exportovat pohyby")
         io_layout.addWidget(self.import_xls_button)
         io_layout.addWidget(self.export_inventory_button)
         io_layout.addWidget(self.export_movements_button)
-
         top_layout.addWidget(data_group)
         top_layout.addWidget(io_group)
         top_layout.addStretch()
-
-        # ... (zbytek UI zůstává stejný)
         filter_groupbox = QGroupBox("Filtry a vyhledávání")
         filter_layout = QHBoxLayout(filter_groupbox)
         filter_layout.addWidget(QLabel("Hledat:"))
@@ -80,7 +71,6 @@ class MainWindow(QMainWindow):
         self.ean_input = QLineEdit()
         self.ean_input.setPlaceholderText("Kurzor zde pro skenování...")
         filter_layout.addWidget(self.ean_input)
-        
         self.table = QTableWidget()
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(["ID", "Název", "SKU", "EAN", "Počet kusů", "Cena", "Kategorie"])
@@ -88,53 +78,59 @@ class MainWindow(QMainWindow):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        
         self.layout.addLayout(top_layout)
         self.layout.addWidget(filter_groupbox)
         self.layout.addWidget(self.table)
         
-        # --- Propojení signálů ---
+        # --- ÚPRAVA PROPOJENÍ SIGNÁLŮ ---
         self.refresh_button.clicked.connect(self.load_initial_data)
         self.add_button.clicked.connect(self.add_new_item)
         self.edit_button.clicked.connect(self.edit_selected_item)
         self.table.doubleClicked.connect(self.edit_selected_item)
         self.categories_button.clicked.connect(self.manage_categories)
-        self.search_input.textChanged.connect(self.filter_table)
-        self.category_filter_combo.currentIndexChanged.connect(self.filter_table)
+        self.search_input.textChanged.connect(self.filter_table_by_text) # Změna na lokální textový filtr
+        self.category_filter_combo.currentIndexChanged.connect(self.load_inventory_data) # Změna kategorie znovu načte data
         self.ean_input.returnPressed.connect(self.handle_ean_scan)
-        # --- ZMĚNA: Propojení správných tlačítek a funkcí ---
         self.import_xls_button.clicked.connect(self.import_from_xls)
         self.export_inventory_button.clicked.connect(self.export_inventory_xls)
         self.export_movements_button.clicked.connect(self.export_movements_xls)
 
-    # Většina metod zůstává stejná...
     def load_initial_data(self):
         self.statusBar().showMessage("Načítám kategorie a sklad...")
         self.load_categories()
-        self.load_inventory_data()
-        self.statusBar().showMessage("Data načtena.", 5000)
-
-    def _flatten_categories(self, categories, flat_list, prefix=""):
-        for cat in categories:
-            flat_list.append({'id': cat['id'], 'name': prefix + cat['name']})
-            if cat.get('children'): self._flatten_categories(cat['children'], flat_list, prefix + "- ")
+        self.load_inventory_data() # Toto již zavolá API s výchozím filtrem
 
     def load_categories(self):
+        # ... (tato metoda zůstává beze změny)
         categories_tree = self.api_client.get_categories()
         self.categories_flat = []
         if categories_tree is not None: self._flatten_categories(categories_tree, self.categories_flat)
         current_selection = self.category_filter_combo.currentData()
+        self.category_filter_combo.blockSignals(True) # Dočasně zablokujeme signály, abychom nespustili reload
         self.category_filter_combo.clear()
         self.category_filter_combo.addItem("Všechny kategorie", -1)
         for cat in self.categories_flat: self.category_filter_combo.addItem(cat['name'], cat['id'])
         index = self.category_filter_combo.findData(current_selection)
         if index != -1: self.category_filter_combo.setCurrentIndex(index)
+        self.category_filter_combo.blockSignals(False) # Odblokujeme signály
+
+    def _flatten_categories(self, categories, flat_list, prefix=""):
+        # ... (tato metoda zůstává beze změny)
+        for cat in categories:
+            flat_list.append({'id': cat['id'], 'name': prefix + cat['name']})
+            if cat.get('children'): self._flatten_categories(cat['children'], flat_list, prefix + "- ")
 
     def load_inventory_data(self):
-        self.inventory_data = self.api_client.get_inventory_items()
+        """Načte data z API na základě aktuálně vybrané kategorie."""
+        self.statusBar().showMessage("Načítám data ze skladu...")
+        selected_category_id = self.category_filter_combo.currentData()
+        
+        self.inventory_data = self.api_client.get_inventory_items(category_id=selected_category_id)
+        
         self.table.setRowCount(0)
         if self.inventory_data is None:
             QMessageBox.critical(self, "Chyba", "Nepodařilo se načíst data ze skladu."); return
+
         self.table.setRowCount(len(self.inventory_data))
         for row, item in enumerate(self.inventory_data):
             category_name = item.get('category', {}).get('name', '') if item.get('category') else ''
@@ -149,21 +145,25 @@ class MainWindow(QMainWindow):
             price_item = QTableWidgetItem(price_str); price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, 5, price_item)
             self.table.setItem(row, 6, QTableWidgetItem(category_name))
+        
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.filter_table()
+        
+        # Aplikujeme textový filtr na nově načtená data
+        self.filter_table_by_text()
+        self.statusBar().showMessage(f"Načteno {len(self.inventory_data)} položek.", 5000)
 
-    def filter_table(self):
+    def filter_table_by_text(self):
+        """Filtruje POUZE podle textu v search boxu. Běží lokálně."""
         filter_text = self.search_input.text().lower()
-        category_id = self.category_filter_combo.currentData()
         for row in range(self.table.rowCount()):
-            text_match = False; category_match = False
-            if (filter_text in self.table.item(row, 1).text().lower() or filter_text in self.table.item(row, 2).text().lower()): text_match = True
-            item_id = int(self.table.item(row, 0).text())
-            item_data = next((item for item in self.inventory_data if item['id'] == item_id), None)
-            if category_id == -1 or (item_data and item_data.get('category_id') == category_id): category_match = True
-            self.table.setRowHidden(row, not (text_match and category_match))
+            name_text = self.table.item(row, 1).text().lower()
+            sku_text = self.table.item(row, 2).text().lower()
+            
+            text_match = (filter_text in name_text or filter_text in sku_text)
+            self.table.setRowHidden(row, not text_match)
 
+    # Všechny ostatní metody (handle_ean_scan, manage_categories, atd.) zůstávají stejné
     def handle_ean_scan(self):
         ean = self.ean_input.text()
         if not ean: return
@@ -222,13 +222,9 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Import dokončen", f"Vytvořeno: {created_count} nových položek.\nAktualizováno: {updated_count} stávajících položek.")
         self.load_initial_data()
     
-    # --- UPRAVENÉ A NOVÉ METODY PRO EXPORT DO XLS ---
-    
     def export_inventory_xls(self):
         path, _ = QFileDialog.getSaveFileName(self, "Uložit inventuru jako...", "inventura.xlsx", "Excel soubory (*.xlsx)")
-        if not path:
-            return
-        
+        if not path: return
         self.statusBar().showMessage("Exportuji inventuru do XLS...")
         try:
             export_inventory_to_xls(self.inventory_data, path)
@@ -240,15 +236,11 @@ class MainWindow(QMainWindow):
 
     def export_movements_xls(self):
         path, _ = QFileDialog.getSaveFileName(self, "Uložit pohyby jako...", "pohyby_skladu.xlsx", "Excel soubory (*.xlsx)")
-        if not path:
-            return
-        
+        if not path: return
         self.statusBar().showMessage("Načítám historii pohybů z API...")
         audit_logs = self.api_client.get_audit_logs()
-        
         if audit_logs is None:
             QMessageBox.critical(self, "Chyba", "Nepodařilo se načíst historii pohybů."); return
-
         self.statusBar().showMessage("Exportuji pohyby ve skladu do XLS...")
         try:
             export_audit_logs_to_xls(audit_logs, path)
