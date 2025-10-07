@@ -8,8 +8,8 @@ services:
   db:
     image: mysql:8
     environment:
-      MYSQL_ROOT_PASSWORD: 775695905
-      MYSQL_DATABASE: database3
+      MYSQL_ROOT_PASSWORD: 1234
+      MYSQL_DATABASE: database
     volumes:
       - dbdata:/var/lib/mysql
     ports: ["3306:3306"]
