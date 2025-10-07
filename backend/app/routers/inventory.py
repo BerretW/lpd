@@ -2,7 +2,7 @@
 import shutil
 import uuid
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Set
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -16,10 +16,37 @@ from app.core.dependencies import require_company_access, require_admin_access
 UPLOAD_DIRECTORY = Path("static/images/inventory")
 UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
+# --- NOVÁ POMOCNÁ FUNKCE PRO ZÍSKÁNÍ STROMU ID KATEGORIÍ ---
+async def _get_descendant_category_ids(db: AsyncSession, company_id: int, parent_category_id: int) -> Set[int]:
+    """
+    Najde ID dané kategorie a všech jejích podkategorií (potomků).
+    """
+    all_categories_stmt = select(InventoryCategory.id, InventoryCategory.parent_id).where(InventoryCategory.company_id == company_id)
+    result = await db.execute(all_categories_stmt)
+    
+    parent_map = {}
+    for cat_id, p_id in result.all():
+        if p_id not in parent_map:
+            parent_map[p_id] = []
+        parent_map[p_id].append(cat_id)
+
+    all_ids_in_subtree = {parent_category_id}
+    queue = [parent_category_id]
+    
+    while queue:
+        current_id = queue.pop(0)
+        children = parent_map.get(current_id, [])
+        for child_id in children:
+            if child_id not in all_ids_in_subtree:
+                all_ids_in_subtree.add(child_id)
+                queue.append(child_id)
+    
+    return all_ids_in_subtree
+
+
 # --- Pomocné funkce ---
 
 async def get_item_or_404(item_id: int, company_id: int, db: AsyncSession) -> InventoryItem:
-    # ... (beze změny)
     stmt = (
         select(InventoryItem)
         .where(and_(InventoryItem.id == item_id, InventoryItem.company_id == company_id))
@@ -35,7 +62,6 @@ async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryIt
     stmt = (
         select(InventoryItem)
         .where(InventoryItem.id == item_id)
-        # --- OPRAVA ZDE: Prohloubení rekurzivního načítání ---
         .options(
             selectinload(InventoryItem.category)
             .selectinload(InventoryCategory.children)
@@ -52,8 +78,6 @@ async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryIt
 # --- API Router ---
 router = APIRouter(prefix="/companies/{company_id}/inventory", tags=["inventory"])
 
-# ... (POST create_inventory_item beze změny, již volá get_full_inventory_item)
-
 @router.get("", response_model=List[InventoryItemOut])
 async def list_inventory_items(
     company_id: int,
@@ -63,27 +87,39 @@ async def list_inventory_items(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
+    """
+    Vrátí seznam skladových položek. Pokud je specifikováno `category_id`,
+    vrátí položky z této kategorie A VŠECH JEJÍCH PODKATEGORIÍ.
+    """
     stmt = (
         select(InventoryItem)
         .where(InventoryItem.company_id == company_id)
-        # --- OPRAVA ZDE: Prohloubení i pro seznam položek ---
         .options(
             selectinload(InventoryItem.category)
             .selectinload(InventoryCategory.children)
             .selectinload(InventoryCategory.children)
             .selectinload(InventoryCategory.children)
         )
-        .offset(skip).limit(limit)
     )
+
+    # --- UPRAVENÁ LOGIKA FILTROVÁNÍ ---
     if category_id is not None:
-        stmt = stmt.where(InventoryItem.category_id == category_id)
+        # Získáme ID dané kategorie a všech jejích potomků.
+        all_relevant_category_ids = await _get_descendant_category_ids(db, company_id, category_id)
+        
+        # Aplikujeme filtr pomocí operátoru 'IN'.
+        if all_relevant_category_ids:
+            stmt = stmt.where(InventoryItem.category_id.in_(all_relevant_category_ids))
+        else:
+            # Pokud kategorie neexistuje nebo nemá potomky a je prázdná, vrátíme prázdný seznam
+            return []
+    
+    # Aplikujeme stránkování až po všech filtrech
+    stmt = stmt.offset(skip).limit(limit)
     
     result = await db.execute(stmt)
     return result.scalars().all()
 
-# ... (ostatní endpointy zůstávají stejné, protože na konci volají get_full_inventory_item)
-
-# ... (zbytek souboru inventory.py může zůstat, jak byl v mé předchozí odpovědi)
 
 @router.post(
     "",
@@ -166,7 +202,7 @@ async def upload_inventory_item_image(
     token: Dict[str, Any] = Depends(require_admin_access)
 ):
     if not file.content_type.startswith("image/"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid file type.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file type.")
 
     item = await get_item_or_404(item_id, company_id, db)
     
@@ -207,7 +243,7 @@ async def update_inventory_item(
     
     update_data = payload.dict(exclude_unset=True)
     if not update_data:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No data for update.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No data for update.")
 
     changes = []
     for key, value in update_data.items():
