@@ -1,4 +1,5 @@
 import os
+from cryptography.fernet import Fernet
 
 class Settings:
     PROJECT_NAME: str = "Appartus Company Management"
@@ -6,5 +7,6 @@ class Settings:
     JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-secret-change-me")
     JWT_ALG: str = "HS256"
     JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
+    ENCRYPTION_KEY: bytes = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode('utf-8')).encode('utf-8')
 
 settings = Settings()

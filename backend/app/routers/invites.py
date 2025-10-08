@@ -9,6 +9,7 @@ from app.schemas.user import UserOut
 from app.services.invite_service import create_invite, get_invite_by_token
 from app.services.user_service import get_user_by_email, create_user, add_membership
 from app.routers.companies import require_company_access
+from app.services.email_service import send_transactional_email
 
 router = APIRouter(prefix="/invites", tags=["invites"])
 
@@ -19,7 +20,19 @@ async def create_company_invite(company_id: int, body: InviteCreateIn,
     inv = await create_invite(db, company_id=company_id, email=body.email, role=body.role, ttl_minutes=body.ttl_minutes)
     await db.commit()
     await db.refresh(inv)
-    # TODO: odeslat e-mail (SMTP / provider) s odkazem /invites/accept?token=...
+
+    # --- ODESLÁNÍ E-MAILU ---
+    # Toto by v reálné aplikaci mělo běžet na pozadí (např. přes Celery/RQ)
+    # aby neblokovalo HTTP odpověď. Pro jednoduchost to zde voláme přímo.
+    await send_transactional_email(
+        db,
+        company_id=company_id,
+        notification_type="on_invite_created", # Klíč, který bude v JSON nastavení
+        recipient=inv.email,
+        subject="Pozvánka do společnosti",
+        body=f"Byli jste pozváni do společnosti. Pro přijetí pozvánky použijte tento token: {inv.token}"
+    )
+
     return inv
 
 @router.post("/accept", response_model=UserOut)

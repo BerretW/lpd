@@ -19,7 +19,8 @@ class InventoryItemBase(BaseModel):
     image_url: Optional[str] = None
     price: Optional[float] = None
     vat_rate: Optional[float] = None
-    # --- ZMĚNA: Pole 'quantity' je odebráno ---
+    is_monitored_for_stock: bool = False
+    low_stock_threshold: Optional[int] = None
 
 class InventoryItemCreateIn(InventoryItemBase):
     # Při vytváření již nezadáváme množství
@@ -34,6 +35,8 @@ class InventoryItemUpdateIn(BaseModel):
     ean: Optional[str] = None
     price: Optional[float] = None
     vat_rate: Optional[float] = None
+    is_monitored_for_stock: Optional[bool] = None
+    low_stock_threshold: Optional[int] = None
     # image_url se bude nastavovat přes samostatný endpoint
 
 class InventoryItemOut(InventoryItemBase):

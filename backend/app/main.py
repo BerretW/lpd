@@ -1,16 +1,32 @@
+import asyncio # Přidat import
+import logging # Přidat import
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from app.core.config import settings
-from app.db.database import engine, Base
+from app.db.database import engine, Base, async_session_factory
 # --- PŘIDÁNÍ NOVÝCH ROUTERŮ ---
 from app.routers import (
     auth, companies, clients, invites, members, inventory, categories,
     work_types, work_orders, tasks, time_logs, audit_logs,
-    locations, inventory_movements
+    locations, inventory_movements, smtp, triggers, internal
 )
+from app.services.trigger_service import check_all_triggers
+
+
+async def periodic_trigger_check():
+    """Periodicky spouští kontrolu triggerů."""
+    while True:
+        # Počkáme 60 minut (3600 sekund)
+        await asyncio.sleep(3600)
+        async with async_session_factory() as session:
+            try:
+                await check_all_triggers(session)
+            except Exception as e:
+                logging.error(f"Periodic trigger check failed: {e}")
+
 
 Path("static/images/inventory").mkdir(parents=True, exist_ok=True)
 
@@ -31,6 +47,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    asyncio.create_task(periodic_trigger_check())
 
 # Registrace všech API routerů
 app.include_router(auth.router)
@@ -48,6 +65,9 @@ app.include_router(audit_logs.router)
 # --- PŘIDAT NOVÉ ROUTERY ---
 app.include_router(locations.router)
 app.include_router(inventory_movements.router)
+app.include_router(smtp.router)
+app.include_router(triggers.router) # Přidat registraci
+app.include_router(internal.router)
 
 
 @app.get("/healthz")

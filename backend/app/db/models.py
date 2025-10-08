@@ -2,7 +2,7 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 from sqlalchemy import (
     String, Integer, ForeignKey, DateTime, Boolean,
-    UniqueConstraint, Enum as SAEnum, Text, Float, Date, TIMESTAMP
+    UniqueConstraint, Enum as SAEnum, Text, Float, Date, TIMESTAMP, JSON
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
@@ -40,6 +40,16 @@ class TimeLogEntryType(str, Enum):
     DOCTOR = "doctor"
     UNPAID_LEAVE = "unpaid_leave"
 
+
+class TriggerType(str, Enum):
+    WORK_ORDER_BUDGET = "work_order_budget"
+    INVENTORY_LOW_STOCK = "inventory_low_stock"
+
+class TriggerCondition(str, Enum):
+    PERCENTAGE_REACHED = "percentage_reached"
+    QUANTITY_BELOW = "quantity_below"
+
+
 # --- Modely ---
 class User(Base):
     __tablename__ = "users"
@@ -65,6 +75,7 @@ class Company(Base):
     bank_account: Mapped[str | None] = mapped_column(String(50))
     iban: Mapped[str | None] = mapped_column(String(50))
     members: Mapped[list["Membership"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    smtp_settings: Mapped["CompanySmtpSettings"] = relationship(back_populates="company", cascade="all, delete-orphan")
 
 class Membership(Base):
     __tablename__ = "memberships"
@@ -124,6 +135,9 @@ class InventoryItem(Base):
     price: Mapped[float | None] = mapped_column(Float)
     vat_rate: Mapped[float | None] = mapped_column(Float)
     description: Mapped[str | None] = mapped_column(Text)
+    is_monitored_for_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
+    low_stock_threshold: Mapped[int | None] = mapped_column(Integer)
+    low_stock_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # --- ZMĚNA: Pole quantity je odstraněno. Nahrazeno vztahem k ItemLocationStock ---
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, onupdate=now_utc)
@@ -178,7 +192,10 @@ class WorkOrder(Base):
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(50), default="new", index=True)
+    # --- PŘIDANÉ POLE ---
+    budget_hours: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
+    budget_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     tasks: Mapped[list["Task"]] = relationship(back_populates="work_order", cascade="all, delete-orphan")
     client: Mapped["Client"] = relationship()
 
@@ -227,3 +244,47 @@ class UsedInventoryItem(Base):
     inventory_item: Mapped["InventoryItem"] = relationship()
     task: Mapped["Task"] = relationship(back_populates="used_items")
     from_location: Mapped["Location"] = relationship()
+
+
+class SecurityProtocolEnum(str, Enum):
+    NONE = "none"
+    TLS = "tls"
+    SSL = "ssl"
+
+class CompanySmtpSettings(Base):
+    __tablename__ = "company_smtp_settings"
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    smtp_host: Mapped[str] = mapped_column(String(255))
+    smtp_port: Mapped[int] = mapped_column(Integer)
+    smtp_user: Mapped[str] = mapped_column(String(255))
+    encrypted_password: Mapped[str] = mapped_column(String(512)) # Šifrované heslo
+    sender_email: Mapped[str] = mapped_column(String(255))
+    security_protocol: Mapped[SecurityProtocolEnum] = mapped_column(SAEnum(SecurityProtocolEnum), default=SecurityProtocolEnum.TLS)
+    
+    # JSON pole pro ukládání preferencí
+    # např. {"on_invite_created": true, "on_task_assigned": false}
+    notification_settings: Mapped[dict] = mapped_column(JSON, default=lambda: {})
+    
+    company: Mapped["Company"] = relationship(back_populates="smtp_settings")
+    
+class NotificationTrigger(Base):
+    __tablename__ = "notification_triggers"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    trigger_type: Mapped[TriggerType] = mapped_column(SAEnum(TriggerType))
+    condition: Mapped[TriggerCondition] = mapped_column(SAEnum(TriggerCondition))
+    
+    # Hodnota, se kterou se porovnává, např. 80 (%) nebo 5 (kusů)
+    threshold_value: Mapped[float] = mapped_column(Float)
+    
+    # JSON pole pro ukládání e-mailů příjemců
+    recipient_emails: Mapped[list[str]] = mapped_column(JSON)
+    
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
+    
+    __table_args__ = (
+        UniqueConstraint('company_id', 'trigger_type', name='uq_company_trigger_type'),
+    )

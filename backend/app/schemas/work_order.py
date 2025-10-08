@@ -1,4 +1,3 @@
-# app/schemas/work_order.py
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from .client import ClientOut
@@ -15,6 +14,8 @@ class WorkOrderBase(BaseModel):
     name: str
     description: Optional[str] = None
     client_id: Optional[int] = None
+    # --- PŘIDANÉ POLE ---
+    budget_hours: Optional[float] = None
 
 class WorkOrderCreateIn(WorkOrderBase):
     pass
