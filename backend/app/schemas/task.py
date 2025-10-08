@@ -38,22 +38,17 @@ class TaskAssignIn(BaseModel):
 class UsedItemCreateIn(BaseModel):
     inventory_item_id: int
     quantity: int
+    # --- NOVÉ POLE ---
+    from_location_id: Optional[int] = None
 
 class TaskOut(TaskBase):
     id: int
     status: str
     work_order_id: int
     assignee: Optional[UserOut] = None
-    
-    # --- NOVÉ POLE PRO SEZNAM MATERIÁLU ---
     used_items: List[UsedItemOut] = []
     
     model_config = ConfigDict(from_attributes=True)
 
-class UsedItemCreateIn(BaseModel):
-    inventory_item_id: int
-    quantity: int
-
-# --- PŘIDAT NOVÉ SCHÉMA ---
 class UsedItemUpdateIn(BaseModel):
     quantity: int

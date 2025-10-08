@@ -15,12 +15,12 @@ def export_inventory_to_xls(inventory_data: list, file_path: str):
     # Vytvoříme sloupec s názvem kategorie pro lepší čitelnost
     df['category_name'] = df['category'].apply(lambda c: c['name'] if isinstance(c, dict) and c.get('name') else '')
 
-    # Vybereme a přejmenujeme sloupce pro finální export
+    # --- ZMĚNA: Používáme 'total_quantity' místo 'quantity' ---
     df_export = df[[
-        'id', 'name', 'sku', 'ean', 'quantity', 'price', 'category_name', 'description'
+        'id', 'name', 'sku', 'ean', 'total_quantity', 'price', 'category_name', 'description'
     ]]
     df_export.columns = [
-        'ID Položky', 'Název', 'SKU', 'EAN', 'Počet kusů', 'Cena', 'Kategorie', 'Popis'
+        'ID Položky', 'Název', 'SKU', 'EAN', 'Celkem kusů', 'Cena', 'Kategorie', 'Popis'
     ]
 
     # Zápis do XLS souboru
@@ -42,7 +42,6 @@ def export_audit_logs_to_xls(audit_logs: list, file_path: str):
     df['item_name'] = df['inventory_item'].apply(lambda i: i['name'] if isinstance(i, dict) else 'Smazaná položka')
 
     # Převedeme časové značky na lépe čitelný formát
-    # a ošetříme případné chyby
     def format_timestamp(ts):
         try:
             return pd.to_datetime(ts).strftime('%d.%m.%Y %H:%M:%S')

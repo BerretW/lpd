@@ -1,32 +1,36 @@
 # app/schemas/inventory.py
-from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from pydantic import BaseModel, ConfigDict, computed_field
+from typing import Optional, List
 from .category import CategoryOut
+from .location import LocationOut
+
+# --- NOVÉ SCHÉMA PRO ZOBRAZENÍ STAVU NA LOKACI ---
+class ItemLocationStockOut(BaseModel):
+    quantity: int
+    location: LocationOut
+    model_config = ConfigDict(from_attributes=True)
 
 class InventoryItemBase(BaseModel):
     name: str
     sku: str
     description: Optional[str] = None
-    quantity: int = 0
     category_id: Optional[int] = None
-    
-    # --- NOVÁ POLE ---
     ean: Optional[str] = None
     image_url: Optional[str] = None
     price: Optional[float] = None
     vat_rate: Optional[float] = None
+    # --- ZMĚNA: Pole 'quantity' je odebráno ---
 
 class InventoryItemCreateIn(InventoryItemBase):
+    # Při vytváření již nezadáváme množství
     pass
 
 class InventoryItemUpdateIn(BaseModel):
     name: Optional[str] = None
     sku: Optional[str] = None
     description: Optional[str] = None
-    quantity: Optional[int] = None
+    # --- ZMĚNA: Pole 'quantity' je odebráno, bude se měnit přes vlastní endpointy ---
     category_id: Optional[int] = None
-    
-    # --- NOVÁ POLE ---
     ean: Optional[str] = None
     price: Optional[float] = None
     vat_rate: Optional[float] = None
@@ -36,5 +40,27 @@ class InventoryItemOut(InventoryItemBase):
     id: int
     company_id: int
     category: Optional[CategoryOut] = None
+    # --- NOVÁ POLE ---
+    locations: List[ItemLocationStockOut] = []
+
+    @computed_field
+    @property
+    def total_quantity(self) -> int:
+        """Dynamicky spočítá celkové množství ze všech lokací."""
+        return sum(loc.quantity for loc in self.locations)
     
     model_config = ConfigDict(from_attributes=True)
+
+# --- NOVÁ SCHÉMATA PRO POHYBY ---
+class PlaceStockIn(BaseModel):
+    inventory_item_id: int
+    location_id: int
+    quantity: int
+    details: Optional[str] = None
+
+class TransferStockIn(BaseModel):
+    inventory_item_id: int
+    from_location_id: int
+    to_location_id: int
+    quantity: int
+    details: Optional[str] = None

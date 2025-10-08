@@ -1,6 +1,6 @@
 # windows/item_dialog.py
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QLineEdit, QSpinBox, 
-                             QPushButton, QMessageBox, QDoubleSpinBox, QComboBox)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QLineEdit, 
+                             QPushButton, QMessageBox, QDoubleSpinBox, QComboBox, QTextEdit)
 
 class ItemDialog(QDialog):
     def __init__(self, api_client, categories_flat, item_data=None, prefill_ean=None):
@@ -17,17 +17,18 @@ class ItemDialog(QDialog):
         self.name_input = QLineEdit()
         self.sku_input = QLineEdit()
         self.ean_input = QLineEdit()
-        self.quantity_input = QSpinBox()
-        self.quantity_input.setRange(0, 99999)
         self.price_input = QDoubleSpinBox()
         self.price_input.setRange(0.0, 999999.0)
         self.price_input.setDecimals(2)
         self.price_input.setSuffix(" Kč")
         
         self.category_combo = QComboBox()
-        self.category_combo.addItem("Bez kategorie", None) # Žádná kategorie
+        self.category_combo.addItem("Bez kategorie", None)
         for cat in self.categories_flat:
             self.category_combo.addItem(cat['name'], cat['id'])
+
+        self.description_input = QTextEdit()
+        self.description_input.setMaximumHeight(80)
 
         self.save_button = QPushButton("Uložit")
         
@@ -37,9 +38,11 @@ class ItemDialog(QDialog):
         form_layout.addRow("Název*:", self.name_input)
         form_layout.addRow("SKU*:", self.sku_input)
         form_layout.addRow("EAN:", self.ean_input)
-        form_layout.addRow("Počet kusů:", self.quantity_input)
         form_layout.addRow("Cena (bez DPH):", self.price_input)
         form_layout.addRow("Kategorie:", self.category_combo)
+        form_layout.addRow("Popis:", self.description_input)
+        
+        # --- ZMĚNA: Pole pro množství bylo odstraněno ---
         
         layout.addLayout(form_layout)
         layout.addWidget(self.save_button)
@@ -55,23 +58,27 @@ class ItemDialog(QDialog):
         self.name_input.setText(self.item_data.get('name', ''))
         self.sku_input.setText(self.item_data.get('sku', ''))
         self.ean_input.setText(self.item_data.get('ean', ''))
-        self.quantity_input.setValue(self.item_data.get('quantity', 0))
+        self.description_input.setText(self.item_data.get('description', ''))
         
         price = self.item_data.get('price')
         self.price_input.setValue(price if price is not None else 0.0)
 
-        category_id = self.item_data.get('category_id')
+        # Načtení ID kategorie může být vnořené
+        category = self.item_data.get('category')
+        category_id = category.get('id') if category else None
+        
         if category_id:
             index = self.category_combo.findData(category_id)
             if index >= 0:
                 self.category_combo.setCurrentIndex(index)
 
     def save_item(self):
+        # --- ZMĚNA: 'quantity' se již neposílá ---
         data = {
-            "name": self.name_input.text(),
-            "sku": self.sku_input.text(),
-            "ean": self.ean_input.text() or None,
-            "quantity": self.quantity_input.value(),
+            "name": self.name_input.text().strip(),
+            "sku": self.sku_input.text().strip(),
+            "ean": self.ean_input.text().strip() or None,
+            "description": self.description_input.toPlainText().strip() or None,
             "price": self.price_input.value(),
             "category_id": self.category_combo.currentData()
         }
@@ -85,7 +92,21 @@ class ItemDialog(QDialog):
         
         result = None
         if self.is_edit_mode:
-            result = self.api_client.update_inventory_item(self.item_data['id'], data)
+            # Vyloučíme klíče, které nechceme posílat, pokud se nezměnily
+            update_payload = {}
+            for key, value in data.items():
+                # Zjednodušená kontrola, v reálu může být komplexnější
+                if str(self.item_data.get(key)) != str(value):
+                    update_payload[key] = value
+            # Speciální případ pro kategorii
+            current_cat_id = self.item_data.get('category', {}).get('id')
+            if current_cat_id != data['category_id']:
+                update_payload['category_id'] = data['category_id']
+
+            if update_payload:
+                 result = self.api_client.update_inventory_item(self.item_data['id'], update_payload)
+            else:
+                 result = True # Nic se neměnilo
         else:
             result = self.api_client.create_inventory_item(data)
             

@@ -22,6 +22,11 @@ class AuditLogAction(str, Enum):
     updated = "updated"
     deleted = "deleted"
     quantity_adjusted = "quantity_adjusted"
+    # --- NOVÉ AKCE PRO LOKACE ---
+    location_placed = "location_placed"
+    location_withdrawn = "location_withdrawn"
+    location_transferred = "location_transferred"
+
 
 class TimeLogStatus(str, Enum):
     pending = "pending"
@@ -119,11 +124,31 @@ class InventoryItem(Base):
     price: Mapped[float | None] = mapped_column(Float)
     vat_rate: Mapped[float | None] = mapped_column(Float)
     description: Mapped[str | None] = mapped_column(Text)
-    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    # --- ZMĚNA: Pole quantity je odstraněno. Nahrazeno vztahem k ItemLocationStock ---
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, onupdate=now_utc)
     category: Mapped["InventoryCategory"] = relationship()
+    # --- NOVÝ VZTAH ---
+    locations: Mapped[list["ItemLocationStock"]] = relationship(back_populates="inventory_item", cascade="all, delete-orphan")
     __table_args__ = (UniqueConstraint("company_id", "sku", name="uq_inventory_item_company_sku"),)
+
+# --- NOVÝ MODEL PRO SKLADOVÁ UMÍSTĚNÍ ---
+class Location(Base):
+    __tablename__ = "locations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_location_company_name"),)
+
+# --- NOVÝ PROPOJOVACÍ MODEL ---
+class ItemLocationStock(Base):
+    __tablename__ = "item_location_stock"
+    inventory_item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id", ondelete="CASCADE"), primary_key=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="CASCADE"), primary_key=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    inventory_item: Mapped["InventoryItem"] = relationship(back_populates="locations")
+    location: Mapped["Location"] = relationship()
 
 class InventoryAuditLog(Base):
     __tablename__ = "inventory_audit_logs"
@@ -197,5 +222,8 @@ class UsedInventoryItem(Base):
     inventory_item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id"), index=True)
     quantity: Mapped[int] = mapped_column(Integer)
     log_date: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
+    # --- NOVÉ POLE ---
+    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"))
     inventory_item: Mapped["InventoryItem"] = relationship()
     task: Mapped["Task"] = relationship(back_populates="used_items")
+    from_location: Mapped["Location"] = relationship()

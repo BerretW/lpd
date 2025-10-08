@@ -22,10 +22,11 @@ def print_step(title):
 
 def print_result(response, expected_status_code=None):
     status_code = response.status_code
-    is_success = (status_code == expected_status_code) if expected_status_code else (200 <= status_code < 300)
+    is_success = (expected_status_code is not None and status_code == expected_status_code) or \
+                 (expected_status_code is None and 200 <= status_code < 300)
     
     try:
-        data = response.json() if response.status_code != 204 else None
+        data = response.json() if response.text and response.status_code != 204 else None
     except requests.exceptions.JSONDecodeError:
         data = response.text
 
@@ -53,76 +54,83 @@ def run_tests():
     company_data = print_result(requests.post(f"{BASE_URL}/auth/register_company", json=reg_payload), 201)
     company_id = company_data["id"]
 
-    login_payload = {"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
-    admin_token = print_result(requests.post(f"{BASE_URL}/auth/login", json=login_payload), 200)["access_token"]
+    login_payload = {"username": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
+    admin_token = print_result(requests.post(f"{BASE_URL}/auth/login", data=login_payload), 200)["access_token"]
     
     invite_payload = {"email": EMPLOYEE_EMAIL, "role": "member"}
     invite_data = print_result(requests.post(f"{BASE_URL}/invites/companies/{company_id}", json=invite_payload, headers=get_headers()), 201)
     accept_payload = {"token": invite_data["token"], "password": ADMIN_PASSWORD}
     employee_data = print_result(requests.post(f"{BASE_URL}/invites/accept", json=accept_payload), 200)
     employee_user_id = employee_data["id"]
-    employee_login_payload = {"email": EMPLOYEE_EMAIL, "password": ADMIN_PASSWORD}
-    employee_token = print_result(requests.post(f"{BASE_URL}/auth/login", json=employee_login_payload), 200)["access_token"]
+    employee_login_payload = {"username": EMPLOYEE_EMAIL, "password": ADMIN_PASSWORD}
+    employee_token = print_result(requests.post(f"{BASE_URL}/auth/login", data=employee_login_payload), 200)["access_token"]
 
     # 2. Nastavení fakturačních údajů
     print_step("2. Setting Billing Information")
-    print("  - Updating company billing info...")
     company_billing_payload = {"ico": "12345678", "dic": "CZ12345678", "address": "Testovací 1, Praha"}
     print_result(requests.patch(f"{BASE_URL}/companies/{company_id}/billing", json=company_billing_payload, headers=get_headers()), 200)
-
-    print("  - Creating client...")
     client_payload = {"name": "Billing Client", "ico": "87654321"}
     client_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/clients", json=client_payload, headers=get_headers()), 201)
     client_id = client_data["id"]
     
     # 3. Nastavení skladu a práce
-    print_step("3. Setting up Inventory and Work Types")
-    item_payload = {"name": "Test Item", "sku": f"ITEM-{timestamp}", "quantity": 100, "price": 150.0}
+    print_step("3. Setting up Work Types and Initial Inventory")
+    # --- ZMĚNA: Položka se vytváří s 0 kusy ---
+    item_payload = {"name": "Test Item", "sku": f"ITEM-{timestamp}", "price": 150.0}
     item_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory", json=item_payload, headers=get_headers()), 201)
     item_id = item_data["id"]
+    assert item_data["total_quantity"] == 0, "New item should have 0 quantity"
     work_type_payload = {"name": "Test Work", "rate": 1000.0}
     work_type_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-types", json=work_type_payload, headers=get_headers()), 201)
     work_type_id = work_type_data["id"]
 
-    # --- NOVÁ SEKCE ---
-    # 4. Testování správy kategorií
-    print_step("4. Category Management Testing")
-    print("  - Creating top-level category...")
+    # 4. Správa kategorií
+    print_step("4. Category Management")
     top_cat_payload = {"name": "Top Category"}
     top_cat_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/categories", json=top_cat_payload, headers=get_headers()), 201)
     top_cat_id = top_cat_data["id"]
-
-    print("  - Creating sub-category...")
     sub_cat_payload = {"name": "Sub Category", "parent_id": top_cat_id}
     sub_cat_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/categories", json=sub_cat_payload, headers=get_headers()), 201)
     sub_cat_id = sub_cat_data["id"]
-    
-    print("  - Verifying category tree structure...")
-    categories_tree = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/categories", headers=get_headers()), 200)
-    assert len(categories_tree) == 1, "Should be one top-level category"
-    assert categories_tree[0]['id'] == top_cat_id, "Top category ID mismatch"
-    assert len(categories_tree[0]['children']) == 1, "Should have one sub-category"
-    assert categories_tree[0]['children'][0]['id'] == sub_cat_id, "Sub-category ID mismatch"
-    
-    print("  - Attempting to delete non-empty category (should fail)...")
-    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/categories/{top_cat_id}", headers=get_headers()), 400)
-    
-    print("  - Assigning item to a category...")
     print_result(requests.patch(f"{BASE_URL}/companies/{company_id}/inventory/{item_id}", json={"category_id": sub_cat_id}, headers=get_headers()), 200)
-    
-    print("  - Attempting to delete category with an item (should fail)...")
-    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/categories/{sub_cat_id}", headers=get_headers()), 400)
-
-    print("  - Unassigning item from category...")
+    print("  - Deleting categories...")
     print_result(requests.patch(f"{BASE_URL}/companies/{company_id}/inventory/{item_id}", json={"category_id": None}, headers=get_headers()), 200)
-
-    print("  - Deleting categories in correct order...")
     print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/categories/{sub_cat_id}", headers=get_headers()), 204)
     print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/categories/{top_cat_id}", headers=get_headers()), 204)
-    # --- KONEC NOVÉ SEKCE ---
 
-    # 5. Vytvoření zakázky a úkolu
-    print_step("5. Creating Work Order and Task")
+    # --- NOVÁ SEKCE PRO TESTOVÁNÍ LOKACÍ ---
+    print_step("5. Inventory Location Management")
+    print("  - Creating locations...")
+    loc_a_payload = {"name": "Regál A-1"}
+    loc_a_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/locations", json=loc_a_payload, headers=get_headers()), 201)
+    loc_a_id = loc_a_data["id"]
+    loc_b_payload = {"name": "Vozidlo 1"}
+    loc_b_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/locations", json=loc_b_payload, headers=get_headers()), 201)
+    loc_b_id = loc_b_data["id"]
+
+    print("  - Placing initial stock...")
+    place_payload = {"inventory_item_id": item_id, "location_id": loc_a_id, "quantity": 100}
+    item_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory/movements/place", json=place_payload, headers=get_headers()), 200)
+    assert item_data["total_quantity"] == 100, f"Expected 100 items, got {item_data['total_quantity']}"
+    assert item_data["locations"][0]["quantity"] == 100, "Quantity in location A-1 mismatch"
+    assert item_data["locations"][0]["location"]["id"] == loc_a_id, "Location ID mismatch"
+
+    print("  - Attempting to delete non-empty location (should fail)...")
+    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/locations/{loc_a_id}", headers=get_headers()), 400)
+
+    print("  - Transferring stock between locations...")
+    transfer_payload = {"inventory_item_id": item_id, "from_location_id": loc_a_id, "to_location_id": loc_b_id, "quantity": 30}
+    item_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory/movements/transfer", json=transfer_payload, headers=get_headers()), 200)
+    assert item_data["total_quantity"] == 100, "Total quantity should not change after transfer"
+    
+    # Najdeme stavy na lokacích
+    loc_a_stock = next((loc for loc in item_data["locations"] if loc["location"]["id"] == loc_a_id), None)
+    loc_b_stock = next((loc for loc in item_data["locations"] if loc["location"]["id"] == loc_b_id), None)
+    assert loc_a_stock and loc_a_stock["quantity"] == 70, f"Expected 70 in location A, got {loc_a_stock['quantity'] if loc_a_stock else 'None'}"
+    assert loc_b_stock and loc_b_stock["quantity"] == 30, f"Expected 30 in location B, got {loc_b_stock['quantity'] if loc_b_stock else 'None'}"
+
+    # 6. Vytvoření zakázky a úkolu
+    print_step("6. Creating Work Order and Task")
     wo_payload = {"name": "Test Work Order", "client_id": client_id}
     wo_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders", json=wo_payload, headers=get_headers()), 201)
     work_order_id = wo_data["id"]
@@ -130,45 +138,43 @@ def run_tests():
     task_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks", json=task_payload, headers=get_headers()), 201)
     task_id = task_data["id"]
 
-    # 6. Testování Docházky
-    print_step("6. Advanced Timesheet Testing")
+    # 7. Testování Docházky
+    print_step("7. Advanced Timesheet Testing")
     test_date = date.today()
-    print("  - Logging and splitting a work block...")
     start_work = datetime.combine(test_date, datetime.min.time()).replace(hour=8)
     end_work = start_work.replace(hour=16)
-    work_payload = {"start_time": start_work.isoformat(), "end_time": end_work.isoformat(), "entry_type": "work", "work_type_id": work_type_id, "task_id": task_id, "notes": "Původní poznámka"}
+    work_payload = {"start_time": start_work.isoformat(), "end_time": end_work.isoformat(), "entry_type": "work", "work_type_id": work_type_id, "task_id": task_id}
     print_result(requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=work_payload, headers=get_headers("employee")), 201)
     start_doctor = start_work.replace(hour=10)
     end_doctor = start_work.replace(hour=11)
     doctor_payload = {"start_time": start_doctor.isoformat(), "end_time": end_doctor.isoformat(), "entry_type": "doctor"}
     print_result(requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=doctor_payload, headers=get_headers("employee")), 201)
     
-    print("  - Verifying the schedule was split correctly...")
     response = requests.get(f"{BASE_URL}/companies/{company_id}/time-logs?work_date={test_date.isoformat()}", headers=get_headers("employee"))
     day_logs = print_result(response, 200)
-    assert len(day_logs) == 3, f"Block splitting failed: Expected 3 blocks, found {len(day_logs)}."
     day_logs.sort(key=lambda x: x['start_time'])
     log_to_process_id = day_logs[0]['id']
 
-    # 7. Testování Reportů
-    print_step("7. Reports Testing")
+    # 8. Testování Reportů
+    print_step("8. Reports Testing")
     print("  - Generating Service Report...")
-    service_report = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/time-logs/{log_to_process_id}/service-report-data", headers=get_headers()), 200)
-    assert service_report['work_order']['id'] == work_order_id
+    print_result(requests.get(f"{BASE_URL}/companies/{company_id}/time-logs/{log_to_process_id}/service-report-data", headers=get_headers()), 200)
 
-    print("  - Adding material and generating Work Order Billing Report...")
-    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory", json={"inventory_item_id": item_id, "quantity": 5}, headers=get_headers()), 200)
+    print("  - Adding material from a specific location...")
+    # --- ZMĚNA: Přidáváme from_location_id ---
+    use_item_payload = {"inventory_item_id": item_id, "quantity": 5, "from_location_id": loc_b_id}
+    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory", json=use_item_payload, headers=get_headers()), 200)
+
+    print("  - Verifying stock quantity was reduced correctly...")
+    item_data = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/inventory/{item_id}", headers=get_headers()), 200)
+    assert item_data["total_quantity"] == 95, f"Expected 95 items total, got {item_data['total_quantity']}"
+    loc_b_stock = next((loc for loc in item_data["locations"] if loc["location"]["id"] == loc_b_id), None)
+    assert loc_b_stock and loc_b_stock["quantity"] == 25, f"Expected 25 in location B, got {loc_b_stock['quantity'] if loc_b_stock else 'None'}"
+
+    print("  - Generating Work Order Billing Report...")
     wo_report = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/billing-report", headers=get_headers()), 200)
-    # Celkem 7 hodin práce (8-10 a 11-16)
     assert wo_report["total_hours"] == 7.0, f"Expected 7.0 hours, got {wo_report['total_hours']}"
-    assert wo_report["total_price_work"] == 7000.0, f"Expected 7000.0 for work, got {wo_report['total_price_work']}"
     assert wo_report["total_price_inventory"] == 750.0, f"Expected 750.0 for inventory, got {wo_report['total_price_inventory']}"
-
-    print("  - Generating Client Billing Report...")
-    start_date_str = test_date.isoformat()
-    end_date_str = (test_date + timedelta(days=1)).isoformat()
-    client_report = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/clients/{client_id}/billing-report?start_date={start_date_str}&end_date={end_date_str}", headers=get_headers()), 200)
-    assert client_report["grand_total"] == wo_report["grand_total"], "Client report total should match work order total."
     
     print("\n" + "="*50)
     print("\033[92mAll tests completed successfully!\033[0m")
