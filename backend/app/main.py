@@ -20,7 +20,7 @@ async def periodic_trigger_check():
     """Periodicky spouští kontrolu triggerů."""
     while True:
         # Počkáme 60 minut (3600 sekund)
-        await asyncio.sleep(3600)
+        await asyncio.sleep(10)
         async with async_session_factory() as session:
             try:
                 await check_all_triggers(session)
