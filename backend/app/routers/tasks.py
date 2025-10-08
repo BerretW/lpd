@@ -1,21 +1,26 @@
+# backend/app/routers/tasks.py
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import selectinload
 
 from app.db.database import get_db
 from app.db.models import (
     Task, UsedInventoryItem, InventoryItem, WorkOrder, Membership,
-    InventoryAuditLog, AuditLogAction, ItemLocationStock, Location
+    InventoryAuditLog, AuditLogAction, ItemLocationStock, Location,
+    TimeLog, TimeLogEntryType
 )
 from app.schemas.task import (
     TaskCreateIn, TaskOut, UsedItemCreateIn, TaskUpdateIn,
-    TaskAssignIn, UsedItemUpdateIn
+    TaskAssignIn, UsedItemUpdateIn, AssignedTaskOut,
+    TaskTotalHoursOut
 )
+# --- OPRAVENÝ IMPORT ZDE ---
+# TimeLogOut se importuje ze svého vlastního souboru, ne z task.py
+from app.schemas.time_log import TimeLogOut
 from app.core.dependencies import require_company_access
 from app.routers.inventory import get_full_inventory_item
-
 
 router = APIRouter(prefix="/companies/{company_id}/work-orders/{work_order_id}/tasks", tags=["tasks"])
 
@@ -167,6 +172,75 @@ async def use_inventory_for_task(
     await db.commit()
     return await get_full_task_or_404(work_order_id, task_id, db)
 
-# --- Poznámka: Endpoints pro update a delete použitého materiálu by vyžadovaly komplexnější logiku
-# --- (např. kam vrátit kusy?), pro zjednodušení je zde ponecháváme bez úprav. Pro plnou
-# --- funkčnost by musely být také rozšířeny o práci s lokacemi.
+
+@router.get(
+    "/{task_id}/total-hours",
+    response_model=TaskTotalHoursOut,
+    summary="Získání celkového počtu odpracovaných hodin na úkolu"
+)
+async def get_task_total_hours(
+    company_id: int,
+    work_order_id: int,
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_company_access)
+):
+    """
+    Vrátí součet všech odpracovaných hodin (typ 'work') zaznamenaných
+    pro daný úkol, po odečtení přestávek.
+    """
+    await get_full_task_or_404(work_order_id, task_id, db)
+
+    total_seconds_expr = func.timestampdiff(text('SECOND'), TimeLog.start_time, TimeLog.end_time)
+    total_break_seconds_expr = TimeLog.break_duration_minutes * 60
+    
+    stmt = (
+        select(func.sum(total_seconds_expr - total_break_seconds_expr))
+        .where(
+            TimeLog.task_id == task_id,
+            TimeLog.entry_type == TimeLogEntryType.WORK
+        )
+    )
+
+    result_from_db = (await db.execute(stmt)).scalar_one_or_none()
+    
+    # --- OPRAVA ZDE ---
+    # Explicitně převedeme výsledek (který může být Decimal nebo None) na float
+    total_seconds = float(result_from_db or 0)
+    
+    total_hours = round(total_seconds / 3600.0, 2)
+    
+    return TaskTotalHoursOut(task_id=task_id, total_hours=total_hours)
+
+@router.get(
+    "/{task_id}/time-logs",
+    response_model=List[TimeLogOut],
+    summary="Získání všech záznamů z docházky pro daný úkol"
+)
+async def get_task_time_logs(
+    company_id: int,
+    work_order_id: int,
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_company_access)
+):
+    """
+    Vrátí chronologický seznam všech záznamů z docházky (všech typů),
+    které jsou navázány na tento konkrétní úkol. Slouží jako výpis aktivit.
+    """
+    await get_full_task_or_404(work_order_id, task_id, db)
+
+    stmt = (
+        select(TimeLog)
+        .where(TimeLog.task_id == task_id)
+        .options(
+            selectinload(TimeLog.user),
+            selectinload(TimeLog.work_type),
+            # --- OPRAVA ZDE: Přidáme eager loading pro úkol ---
+            selectinload(TimeLog.task) 
+        )
+        .order_by(TimeLog.start_time.asc())
+    )
+
+    result = await db.execute(stmt)
+    return result.scalars().all()

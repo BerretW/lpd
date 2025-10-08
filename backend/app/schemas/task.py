@@ -57,5 +57,9 @@ class AssignedTaskOut(TaskOut):
     work_order: WorkOrderPreviewOut
     model_config = ConfigDict(from_attributes=True)
 
+class TaskTotalHoursOut(BaseModel):
+    task_id: int
+    total_hours: float
+    
 class UsedItemUpdateIn(BaseModel):
     quantity: int

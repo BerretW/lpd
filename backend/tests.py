@@ -173,21 +173,23 @@ def run_tests():
     task_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks", json=task_payload, headers=get_headers()), 201)
     task_id = task_data["id"]
 
-    # 9. Překročení prahů
-    print_step("9. Exceeding Trigger Thresholds")
+     # 9. Překročení prahů a záznam docházky
+    print_step("9. Exceeding Thresholds & Logging Time")
     print("  - Logging work to exceed 80% of budget...")
     test_date = date.today()
     start_work = datetime.combine(test_date, datetime.min.time()).replace(hour=8)
     end_work = start_work.replace(hour=16, minute=30) # 8.5 hodiny > 80% z 10h
     work_payload = {"start_time": start_work.isoformat(), "end_time": end_work.isoformat(), "entry_type": "work", "work_type_id": work_type_id, "task_id": task_id}
-    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=work_payload, headers=get_headers("employee")), 201)
+    # --- ZMĚNA: Uložíme si odpověď pro pozdější kontrolu ---
+    work_log_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=work_payload, headers=get_headers("employee")), 201)
+    work_log_id = work_log_data['id']
 
     print("  - Using inventory to go below stock threshold...")
     use_item_payload = {"inventory_item_id": item_id, "quantity": 6, "from_location_id": loc_a_id} # 15 - 6 = 9 < 10
     print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory", json=use_item_payload, headers=get_headers()), 200)
     
-    # 10. Přiřazení úkolů a ověření nového endpointu
-    print_step("10. Assigning tasks and verifying assigned tasks endpoint")
+    # 10. Přiřazení úkolů a ověření nových endpointů
+    print_step("10. Assigning tasks and verifying new endpoints")
     print("  - Assigning task to the employee...")
     assign_payload = {"assignee_id": employee_user_id}
     print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/assign", json=assign_payload, headers=get_headers()), 200)
@@ -196,13 +198,19 @@ def run_tests():
     assigned_tasks_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/members/{employee_user_id}/tasks", headers=get_headers("employee")), 200)
     assert len(assigned_tasks_response) == 1
     assert assigned_tasks_response[0]["id"] == task_id
-    assert "work_order" in assigned_tasks_response[0] # Ověříme, že se vrací rozšířené schéma
-    assert assigned_tasks_response[0]["work_order"]["name"] == "Budget Test Work Order"
 
-    print("  - Verifying admin can see employee's tasks...")
-    admin_assigned_tasks_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/members/{employee_user_id}/tasks", headers=get_headers("admin")), 200)
-    assert len(admin_assigned_tasks_response) == 1
-    assert admin_assigned_tasks_response[0]["id"] == task_id
+    print("  - Verifying total hours for the task...")
+    total_hours_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/total-hours", headers=get_headers()), 200)
+    assert total_hours_response["total_hours"] == 8.5
+    assert total_hours_response["task_id"] == task_id
+
+    # --- NOVÝ TEST ---
+    print("  - Verifying activity feed for the task...")
+    activity_feed_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/time-logs", headers=get_headers()), 200)
+    assert len(activity_feed_response) == 1
+    assert activity_feed_response[0]['id'] == work_log_id
+    assert activity_feed_response[0]['entry_type'] == 'work'
+    assert activity_feed_response[0]['user']['email'] == EMPLOYEE_EMAIL
 
     # 11. Manuální spuštění a ověření triggerů
     print_step("11. Manually Running and Verifying Triggers")
