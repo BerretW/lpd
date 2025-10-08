@@ -244,3 +244,163 @@ async def get_task_time_logs(
 
     result = await db.execute(stmt)
     return result.scalars().all()
+
+@router.delete(
+    "/{task_id}/inventory/{used_item_id}", 
+    response_model=TaskOut, 
+    summary="Odebrání použitého materiálu z úkolu"
+)
+async def remove_used_inventory_from_task(
+    company_id: int,
+    work_order_id: int,
+    task_id: int,
+    used_item_id: int,
+    db: AsyncSession = Depends(get_db),
+    token: Dict[str, Any] = Depends(require_company_access)
+):
+    """
+    Odebere záznam o použitém materiálu z úkolu.
+    Tato akce je reverzní - materiál se "vrátí" zpět na původní skladovou lokaci
+    a vytvoří se o tom auditní záznam.
+    """
+    # 1. Najdeme záznam o použití materiálu a ověříme, že patří k danému úkolu
+    stmt = select(UsedInventoryItem).where(
+        UsedInventoryItem.id == used_item_id,
+        UsedInventoryItem.task_id == task_id
+    )
+    used_item_record = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not used_item_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Used item record not found for this task.")
+
+    # 2. Vrátíme množství zpět na skladovou lokaci, pokud byla specifikována
+    if used_item_record.from_location_id:
+        # Najdeme záznam o stavu na dané lokaci
+        stock_record = await db.get(ItemLocationStock, (used_item_record.inventory_item_id, used_item_record.from_location_id))
+        
+        if stock_record:
+            stock_record.quantity += used_item_record.quantity
+        else:
+            # Pokud by záznam mezitím zmizel (což by nemělo nastat), vytvoříme ho znovu
+            new_stock_record = ItemLocationStock(
+                inventory_item_id=used_item_record.inventory_item_id,
+                location_id=used_item_record.from_location_id,
+                quantity=used_item_record.quantity
+            )
+            db.add(new_stock_record)
+    
+    # 3. Vytvoříme auditní záznam o vrácení
+    user_id = int(token.get("sub"))
+    item = await db.get(InventoryItem, used_item_record.inventory_item_id)
+    location = await db.get(Location, used_item_record.from_location_id) if used_item_record.from_location_id else None
+    
+    item_name = item.name if item else "N/A"
+    location_name = location.name if location else "Neznámá lokace"
+
+    log_details = (
+        f"Vráceno {used_item_record.quantity} ks položky '{item_name}' zpět na sklad (lokace: '{location_name}') "
+        f"z úkolu ID: {task_id}."
+    )
+    
+    log_entry = InventoryAuditLog(
+        item_id=used_item_record.inventory_item_id,
+        user_id=user_id,
+        company_id=company_id,
+        action=AuditLogAction.quantity_adjusted,
+        details=log_details
+    )
+    db.add(log_entry)
+    
+    # 4. Smažeme původní záznam o použití materiálu
+    await db.delete(used_item_record)
+    
+    # 5. Uložíme změny a vrátíme aktualizovaný úkol
+    await db.commit()
+    return await get_full_task_or_404(work_order_id, task_id, db)
+
+@router.patch(
+    "/{task_id}/inventory/{used_item_id}",
+    response_model=TaskOut,
+    summary="Úprava množství použitého materiálu na úkolu"
+)
+async def update_used_inventory_quantity(
+    company_id: int,
+    work_order_id: int,
+    task_id: int,
+    used_item_id: int,
+    payload: UsedItemUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    token: Dict[str, Any] = Depends(require_company_access)
+):
+    """
+    Upraví množství materiálu použitého na úkolu. Tato operace je plně svázaná se skladem:
+    - Pokud se množství **zvýší**, další kusy se odečtou ze skladu.
+    - Pokud se množství **sníží**, rozdíl se vrátí zpět na sklad.
+    Vytvoří se odpovídající auditní záznam.
+    """
+    if payload.quantity <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Quantity must be positive. To remove an item, use the DELETE endpoint."
+        )
+
+    # 1. Najdeme záznam o použití materiálu
+    stmt = select(UsedInventoryItem).where(
+        UsedInventoryItem.id == used_item_id,
+        UsedInventoryItem.task_id == task_id
+    )
+    used_item_record = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not used_item_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Used item record not found for this task.")
+
+    original_quantity = used_item_record.quantity
+    new_quantity = payload.quantity
+    quantity_diff = new_quantity - original_quantity
+
+    # Pokud se nic nemění, nic neděláme
+    if quantity_diff == 0:
+        return await get_full_task_or_404(work_order_id, task_id, db)
+
+    # 2. Upravíme stav skladu podle rozdílu
+    if used_item_record.from_location_id:
+        stock_record = await db.get(ItemLocationStock, (used_item_record.inventory_item_id, used_item_record.from_location_id))
+        if not stock_record:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Source stock location no longer exists.")
+
+        # Zvyšujeme spotřebu -> bereme více ze skladu
+        if quantity_diff > 0:
+            if stock_record.quantity < quantity_diff:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Not enough stock to increase usage. Only {stock_record.quantity} available, but {quantity_diff} more are needed."
+                )
+            stock_record.quantity -= quantity_diff
+        
+        # Snižujeme spotřebu -> vracíme do skladu
+        else: # quantity_diff < 0
+            stock_record.quantity += abs(quantity_diff)
+    
+    # 3. Aktualizujeme samotný záznam o použitém materiálu
+    used_item_record.quantity = new_quantity
+    
+    # 4. Vytvoříme auditní záznam
+    user_id = int(token.get("sub"))
+    item = await db.get(InventoryItem, used_item_record.inventory_item_id)
+    location = await db.get(Location, used_item_record.from_location_id) if used_item_record.from_location_id else None
+    
+    log_details = (
+        f"Množství položky '{item.name if item else 'N/A'}' pro úkol ID:{task_id} "
+        f"upraveno z {original_quantity} na {new_quantity}. "
+        f"Změna stavu na lokaci '{location.name if location else 'N/A'}': {-quantity_diff:+d} ks."
+    )
+    
+    log_entry = InventoryAuditLog(
+        item_id=used_item_record.inventory_item_id, user_id=user_id, company_id=company_id,
+        action=AuditLogAction.quantity_adjusted, details=log_details
+    )
+    db.add(log_entry)
+    
+    # 5. Uložíme a vrátíme
+    await db.commit()
+    return await get_full_task_or_404(work_order_id, task_id, db)
