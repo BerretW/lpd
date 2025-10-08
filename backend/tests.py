@@ -186,14 +186,30 @@ def run_tests():
     use_item_payload = {"inventory_item_id": item_id, "quantity": 6, "from_location_id": loc_a_id} # 15 - 6 = 9 < 10
     print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory", json=use_item_payload, headers=get_headers()), 200)
     
-    # 10. Manuální spuštění a ověření triggerů
-    print_step("10. Manually Running and Verifying Triggers")
+    # 10. Přiřazení úkolů a ověření nového endpointu
+    print_step("10. Assigning tasks and verifying assigned tasks endpoint")
+    print("  - Assigning task to the employee...")
+    assign_payload = {"assignee_id": employee_user_id}
+    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/assign", json=assign_payload, headers=get_headers()), 200)
+
+    print("  - Verifying employee can see their own tasks...")
+    assigned_tasks_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/members/{employee_user_id}/tasks", headers=get_headers("employee")), 200)
+    assert len(assigned_tasks_response) == 1
+    assert assigned_tasks_response[0]["id"] == task_id
+    assert "work_order" in assigned_tasks_response[0] # Ověříme, že se vrací rozšířené schéma
+    assert assigned_tasks_response[0]["work_order"]["name"] == "Budget Test Work Order"
+
+    print("  - Verifying admin can see employee's tasks...")
+    admin_assigned_tasks_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/members/{employee_user_id}/tasks", headers=get_headers("admin")), 200)
+    assert len(admin_assigned_tasks_response) == 1
+    assert admin_assigned_tasks_response[0]["id"] == task_id
+
+    # 11. Manuální spuštění a ověření triggerů
+    print_step("11. Manually Running and Verifying Triggers")
     if SMTP_CONFIGURED:
         print("  - Running trigger check via internal endpoint...")
-        # V URL musíme poslat company_id jako query parametr
         print_result(requests.post(f"{BASE_URL}/internal/run-triggers?company_id={company_id}", headers=get_headers()), 200)
         print(f"  \033[94mINFO: Two alert emails (low stock, budget) should have been sent to {TEST_SMTP_RECIPIENT}. Please verify manually.\033[0m")
-        # Dáme chvilku na odeslání, abychom se vyhnuli race condition v logování
         time.sleep(2)
         
     print("\n" + "="*50)

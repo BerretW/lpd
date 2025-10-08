@@ -1,8 +1,8 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from .user import UserOut
+from .work_order import WorkOrderPreviewOut
 
-# --- NOVÁ SCHÉMATA PRO ZOBRAZENÍ POUŽITÉHO MATERIÁLU ---
 
 class UsedItemInventoryPreviewOut(BaseModel):
     """Zjednodušený pohled na skladovou položku pro seznam materiálu."""
@@ -48,6 +48,13 @@ class TaskOut(TaskBase):
     assignee: Optional[UserOut] = None
     used_items: List[UsedItemOut] = []
     
+    model_config = ConfigDict(from_attributes=True)
+
+class AssignedTaskOut(TaskOut):
+    """
+    Rozšířené schéma úkolu, které obsahuje i detail nadřazené zakázky.
+    """
+    work_order: WorkOrderPreviewOut
     model_config = ConfigDict(from_attributes=True)
 
 class UsedItemUpdateIn(BaseModel):

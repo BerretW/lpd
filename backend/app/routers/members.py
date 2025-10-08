@@ -9,9 +9,13 @@ import calendar
 from collections import defaultdict
 
 from app.db.database import get_db
-from app.db.models import Membership, User, TimeLog, TimeLogEntryType
+from app.db.models import (
+    Membership, User, TimeLog, TimeLogEntryType, RoleEnum,
+    Task, WorkOrder, UsedInventoryItem
+)
 # --- PŘIDÁN IMPORT nového schématu a servisních funkcí ---
 from app.schemas.member import MemberOut, MemberUpdateIn, MonthlyHoursSummaryOut, HoursBreakdown, MemberCreateIn
+from app.schemas.task import AssignedTaskOut
 from app.services.user_service import get_user_by_email, create_user
 from app.core.dependencies import require_company_access, require_admin_access
 
@@ -115,6 +119,60 @@ async def remove_member(
     await db.delete(member)
     await db.commit()
 
+
+@router.get(
+    "/{user_id}/tasks",
+    response_model=List[AssignedTaskOut],
+    summary="Získání všech úkolů přiřazených konkrétnímu členovi"
+)
+async def get_assigned_tasks_for_member(
+    company_id: int,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    payload: dict = Depends(require_company_access)
+):
+    """
+    Vrátí seznam všech úkolů přiřazených danému uživateli (`user_id`).
+    - Běžný uživatel může zobrazit pouze své vlastní úkoly.
+    - Admin nebo vlastník může zobrazit úkoly libovolného člena firmy.
+    """
+    requesting_user_id = int(payload.get("sub"))
+    
+    # Ověření, zda je uživatel, jehož úkoly chceme vidět, vůbec členem firmy
+    member_to_view = await get_member_or_404(company_id, user_id, db)
+
+    # Autorizační logika
+    if requesting_user_id != user_id:
+        # Pokud se uživatel snaží zobrazit úkoly někoho jiného, ověříme, zda je admin
+        stmt_role = select(Membership.role).where(
+            Membership.user_id == requesting_user_id,
+            Membership.company_id == company_id
+        )
+        role = (await db.execute(stmt_role)).scalar_one_or_none()
+        if role not in [RoleEnum.owner, RoleEnum.admin]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own assigned tasks."
+            )
+
+    # Sestavení dotazu pro načtení úkolů
+    stmt = (
+        select(Task)
+        .join(Task.work_order)
+        .where(
+            Task.assignee_id == user_id,
+            WorkOrder.company_id == company_id
+        )
+        .options(
+            selectinload(Task.work_order).selectinload(WorkOrder.client),
+            selectinload(Task.assignee),
+            selectinload(Task.used_items).selectinload(UsedInventoryItem.inventory_item)
+        )
+        .order_by(Task.created_at.desc())
+    )
+    
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 @router.get(
     "/{user_id}/hours-summary",
