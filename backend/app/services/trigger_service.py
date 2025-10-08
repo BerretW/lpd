@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from app.db.models import (
     NotificationTrigger, TriggerType, WorkOrder, TimeLog,
-    InventoryItem, ItemLocationStock, TimeLogEntryType
+    InventoryItem, ItemLocationStock, TimeLogEntryType, Task
 )
 from app.services.email_service import send_transactional_email
 
@@ -34,7 +34,7 @@ async def check_work_order_budget_triggers(db: AsyncSession):
         work_orders_stmt = (
             select(WorkOrder, func.sum(subquery.c.total_hours).label('logged_hours'))
             .join(WorkOrder.tasks)
-            .join(subquery, subquery.c.task_id == text('tasks.id')) # Explicitní join
+            .join(subquery, subquery.c.task_id == Task.id) # Použijeme explicitní Task.id
             .where(
                 WorkOrder.company_id == trigger.company_id,
                 WorkOrder.budget_hours > 0,
