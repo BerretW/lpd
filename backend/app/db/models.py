@@ -32,6 +32,7 @@ class AuditLogAction(str, Enum):
     location_withdrawn = "location_withdrawn"
     location_transferred = "location_transferred"
     write_off = "write_off"
+    picking_fulfilled = "picking_fulfilled"
 
 
 class TimeLogStatus(str, Enum):
@@ -53,6 +54,12 @@ class TriggerType(str, Enum):
 class TriggerCondition(str, Enum):
     PERCENTAGE_REACHED = "percentage_reached"
     QUANTITY_BELOW = "quantity_below"
+
+class PickingOrderStatus(str, Enum):
+    NEW = "new"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
 
 class User(Base):
     __tablename__ = "users"
@@ -287,3 +294,39 @@ class NotificationTrigger(Base):
     __table_args__ = (
         UniqueConstraint('company_id', 'trigger_type', name='uq_company_trigger_type'),
     )
+
+class PickingOrder(Base):
+    __tablename__ = "picking_orders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    
+    requester_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    source_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), index=True)
+    destination_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), index=True)
+    
+    status: Mapped[PickingOrderStatus] = mapped_column(SAEnum(PickingOrderStatus), default=PickingOrderStatus.NEW, index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    
+    requester: Mapped["User"] = relationship()
+    source_location: Mapped["Location"] = relationship(foreign_keys=[source_location_id])
+    destination_location: Mapped["Location"] = relationship(foreign_keys=[destination_location_id])
+    
+    items: Mapped[list["PickingOrderItem"]] = relationship(back_populates="picking_order", cascade="all, delete-orphan")
+
+
+class PickingOrderItem(Base):
+    __tablename__ = "picking_order_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    picking_order_id: Mapped[int] = mapped_column(ForeignKey("picking_orders.id", ondelete="CASCADE"), index=True)
+    
+    inventory_item_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_items.id", ondelete="SET NULL"))
+    requested_item_description: Mapped[str | None] = mapped_column(String(512)) # Pro položky, co nejsou ve skladu
+    
+    requested_quantity: Mapped[int] = mapped_column(Integer)
+    picked_quantity: Mapped[int | None] = mapped_column(Integer)
+    
+    picking_order: Mapped["PickingOrder"] = relationship(back_populates="items")
+    inventory_item: Mapped["InventoryItem"] = relationship()

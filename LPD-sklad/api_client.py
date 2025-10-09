@@ -48,6 +48,7 @@ class ApiClient:
         url = f"{API_BASE_URL}{endpoint}"
         return requests.request(method, url, **kwargs)
 
+
     # --- INVENTORY ITEMS ---
     def get_inventory_items(self, category_id: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
         try:
@@ -250,3 +251,46 @@ class ApiClient:
         except requests.exceptions.RequestException as e:
             print(f"Chyba při odepisování položky: {e}")
             return None
+        
+
+    def get_picking_orders(self, status: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
+        """Získá seznam požadavků na materiál, volitelně filtrovaný podle stavu."""
+        try:
+            endpoint = f"/companies/{self.company_id}/picking-orders"
+            params = {}
+            if status and status != "all":
+                params['status'] = status
+            response = self._make_request("GET", endpoint, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při načítání požadavků: {e}")
+            return None
+
+    def create_picking_order(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Vytvoří nový požadavek na materiál."""
+        try:
+            endpoint = f"/companies/{self.company_id}/picking-orders"
+            response = self._make_request("POST", endpoint, json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při vytváření požadavku: {e}")
+            return None
+
+    def fulfill_picking_order(self, order_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Splní (vychystá) požadavek na materiál."""
+        try:
+            endpoint = f"/companies/{self.company_id}/picking-orders/{order_id}/fulfill"
+            response = self._make_request("POST", endpoint, json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při plnění požadavku: {e}")
+            # Zkusíme parsovat chybovou hlášku z API
+            try:
+                error_detail = response.json().get('detail')
+                print(f"Detail chyby z API: {error_detail}")
+                return {"error": error_detail} # Vrátíme slovník s chybou
+            except:
+                return None

@@ -3,11 +3,15 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QLineEdit,
                              QPushButton, QMessageBox, QDoubleSpinBox, QComboBox, QTextEdit)
 
 class ItemDialog(QDialog):
-    def __init__(self, api_client, categories_flat, item_data=None, prefill_ean=None):
+    def __init__(self, api_client, categories_flat, item_data=None, prefill_data=None):
         super().__init__()
         self.api_client = api_client
         self.categories_flat = categories_flat
         self.item_data = item_data
+        
+        # --- NOVÝ ATRIBUT ---
+        # Zde si uložíme data o nově vytvořené položce, aby si je mohl vyzvednout rodičovský dialog
+        self.created_item = None
 
         self.is_edit_mode = self.item_data is not None
         title = "Upravit položku" if self.is_edit_mode else "Vytvořit novou položku"
@@ -47,8 +51,11 @@ class ItemDialog(QDialog):
         
         if self.is_edit_mode:
             self._populate_fields()
-        elif prefill_ean:
-            self.ean_input.setText(prefill_ean)
+        elif prefill_data:
+            # Rozšířeno pro předvyplnění více polí
+            self.name_input.setText(prefill_data.get('name', ''))
+            self.ean_input.setText(prefill_data.get('ean', ''))
+
 
         self.save_button.clicked.connect(self.save_item)
 
@@ -60,8 +67,7 @@ class ItemDialog(QDialog):
         
         price = self.item_data.get('price')
         self.price_input.setValue(price if price is not None else 0.0)
-
-        # Načtení ID kategorie může být vnořené
+        
         category = self.item_data.get('category')
         category_id = category.get('id') if category else None
         
@@ -94,11 +100,8 @@ class ItemDialog(QDialog):
                 if str(self.item_data.get(key)) != str(value):
                     update_payload[key] = value
             
-            # --- OPRAVA ZDE ---
-            # Bezpečné zjištění ID aktuální kategorie
             category_info = self.item_data.get('category')
             current_cat_id = category_info.get('id') if category_info else None
-            # --- KONEC OPRAVY ---
 
             if current_cat_id != data['category_id']:
                 update_payload['category_id'] = data['category_id']
@@ -106,9 +109,12 @@ class ItemDialog(QDialog):
             if update_payload:
                  result = self.api_client.update_inventory_item(self.item_data['id'], update_payload)
             else:
-                 result = True # Nic se neměnilo
+                 result = True 
         else:
             result = self.api_client.create_inventory_item(data)
+            # --- ZMĚNA ZDE ---
+            if result:
+                self.created_item = result # Uložíme si vrácená data
             
         self.save_button.setEnabled(True)
         self.save_button.setText("Uložit")

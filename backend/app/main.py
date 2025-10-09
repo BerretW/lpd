@@ -11,7 +11,7 @@ from app.db.database import engine, Base, async_session_factory
 from app.routers import (
     auth, companies, clients, invites, members, inventory, categories,
     work_types, work_orders, tasks, time_logs, audit_logs,
-    locations, inventory_movements, smtp, triggers, internal
+    locations, inventory_movements, smtp, triggers, internal, picking_orders
 )
 from app.services.trigger_service import check_all_triggers
 
@@ -68,7 +68,7 @@ app.include_router(inventory_movements.router)
 app.include_router(smtp.router)
 app.include_router(triggers.router) # Přidat registraci
 app.include_router(internal.router)
-
+app.include_router(picking_orders.router)
 
 @app.get("/healthz")
 async def health():

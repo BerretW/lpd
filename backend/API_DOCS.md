@@ -1,3 +1,4 @@
+
 # API Dokumentace - Appartus
 
 **Toto je kompletní referenční dokumentace pro API systému Appartus.**
@@ -21,6 +22,7 @@ Authorization: Bearer <váš_access_token>
 * [Lokace (**/companies/{id}/locations**)](https://www.google.com/url?sa=E&q=#lokace-companiesidlocations)
 * [Sklad (**/companies/{id}/inventory**)](https://www.google.com/url?sa=E&q=#sklad-companiesidinventory)
 * [Skladové Pohyby (**.../inventory/movements**)](https://www.google.com/url?sa=E&q=#skladov%C3%A9-pohyby-inventorymovements)
+* [Požadavky na materiál (**.../picking-orders**)](https://www.google.com/url?sa=E&q=#po%C5%BEadavky-na-materi%C3%A1l-picking-orders)
 * [Kategorie Skladu (**.../categories**)](https://www.google.com/url?sa=E&q=#kategorie-skladu-categories)
 * [Zakázky (**/companies/{id}/work-orders**)](https://www.google.com/url?sa=E&q=#zak%C3%A1zky-companiesidwork-orders)
 * [Úkoly (**.../work-orders/{id}/tasks**)](https://www.google.com/url?sa=E&q=#%C3%BAkoly-work-ordersidtasks)
@@ -50,20 +52,7 @@ Authorization: Bearer <váš_access_token>
     "company_name": "Moje Nová Firma",
     "slug": "moje-nova-firma",
     "admin_email": "admin@fir.ma",
-    "admin_password": "silneheslo123",
-    "logo_url": "http://example.com/logo.png"
-  }
-  ```
-* **Výstup (při úspěchu** **201 Created**):
-
-  **code**JSON
-
-  ```
-  {
-    "id": 1,
-    "name": "Moje Nová Firma",
-    "slug": "moje-nova-firma",
-    "logo_url": "http://example.com/logo.png"
+    "admin_password": "silneheslo123"
   }
   ```
 
@@ -71,24 +60,19 @@ Authorization: Bearer <váš_access_token>
 
 * **Metoda:** **POST**
 * **URL:** **/auth/login**
-* **Účel:** **Ověří přihlašovací údaje a vrátí JWT Bearer token pro autorizaci dalších požadavků.**
+* **Účel:** **Ověří přihlašovací údaje a vrátí JWT Bearer token.**
 * **Oprávnění:** **Žádné.**
-* **Vstup (Form Data):**
+* **Vstup (Form Data):** **username=admin@fir.ma&password=silneheslo123**
+* **Výstup (při úspěchu** **200 OK**):
 
-  **code**Code
+  **code**JSON
 
   ```
-  username=admin@fir.ma&password=silneheslo123
-  ```- **Výstup (při úspěchu `200 OK`):**
-  ```json
   {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer"
   }
   ```
-* **Možné chyby:**
-
-  * **401 Unauthorized**: Neplatné přihlašovací údaje.
 
 ---
 
@@ -100,29 +84,6 @@ Authorization: Bearer <váš_access_token>
 * **URL:** **/companies/{company_id}**
 * **Účel:** **Vrátí základní a fakturační údaje o firmě.**
 * **Oprávnění:** **Člen firmy.**
-* **Výstup (při úspěchu** **200 OK**):
-
-  **code**JSON
-
-  ```
-  {
-    "id": 1,
-    "name": "Moje Firma",
-    "slug": "moje-firma",
-    "logo_url": null,
-    "legal_name": "Moje Firma s.r.o.",
-    "address": "Hlavní 1, Praha",
-    "ico": "12345678",
-    "dic": "CZ12345678",
-    "executive": "Jan Novák",
-    "bank_account": "123456/0100",
-    "iban": null
-  }
-  ```
-* **Možné chyby:**
-
-  * **403 Forbidden**: Uživatel nemá přístup do této firmy.
-  * **404 Not Found**: Firma neexistuje.
 
 ### Aktualizace fakturačních údajů firmy
 
@@ -130,240 +91,68 @@ Authorization: Bearer <váš_access_token>
 * **URL:** **/companies/{company_id}/billing**
 * **Účel:** **Umožňuje aktualizovat fakturační údaje firmy.**
 * **Oprávnění:** **Administrátor / Vlastník.**
-* **Vstup (JSON):**
-
-  **code**JSON
-
-  ```
-  {
-    "ico": "87654321",
-    "address": "Nová Adresa 2, Brno"
-  }
-  ```- **Výstup (při úspěchu `200 OK`):** Kompletní aktualizovaný objekt firmy.
-  ```
-* **Možné chyby:**
-
-  * **403 Forbidden**: Uživatel není admin.
-  * **404 Not Found**: Firma neexistuje.
+* **Vstup (JSON):** **{"ico": "87654321", "address": "Nová Adresa 2, Brno"}**
 
 ---
 
 ## Členové (**/companies//members**)
 
-### Získání seznamu členů firmy
-
-* **Metoda:** **GET**
-* **URL:** **/companies/{company_id}/members**
-* **Účel:** **Vrátí seznam všech uživatelů a jejich rolí v dané firmě.**
-* **Oprávnění:** **Člen firmy.**
-* **Výstup (při úspěchu** **200 OK**):
-
-  **code**JSON
-
-  ```
-  [
-    {
-      "user": { "id": 1, "email": "owner@fir.ma" },
-      "role": "owner"
-    },
-    {
-      "user": { "id": 2, "email": "member@fir.ma" },
-      "role": "member"
-    }
-  ]
-  ```
-
-### Přidání nového člena do firmy
-
-* **Metoda:** **POST**
-* **URL:** **/companies/{company_id}/members**
-* **Účel:** **Vytvoří nového uživatele (pokud neexistuje) a rovnou ho přidá do firmy.**
-* **Oprávnění:** **Administrátor / Vlastník.**
-* **Vstup (JSON):**
-
-  **code**JSON
-
-  ```
-  {
-    "email": "novy.clen@fir.ma",
-    "password": "heslo-pro-noveho-clena",
-    "role": "member"
-  }
-  ```
-* **Výstup (při úspěchu** **201 Created**): **Objekt nově vytvořeného členství.**
-* **Možné chyby:**
-
-  * **409 Conflict**: Uživatel s tímto e-mailem již je členem firmy.
-
-### Změna role člena
-
-* **Metoda:** **PATCH**
-* **URL:** **/companies/{company_id}/members/{user_id}**
-* **Účel:** **Změní roli existujícího člena firmy.**
-* **Oprávnění:** **Administrátor / Vlastník.**
-* **Vstup (JSON):**
-
-  **code**JSON
-
-  ```
-  {
-    "role": "admin"
-  }
-  ```
-* **Výstup (při úspěchu** **200 OK**): **Aktualizovaný objekt členství.**
-* **Možné chyby:**
-
-  * **404 Not Found**: Člen s daným **user_id** **v této firmě neexistuje.**
-
-### Odebrání člena z firmy
-
-* **Metoda:** **DELETE**
-* **URL:** **/companies/{company_id}/members/{user_id}**
-* **Účel:** **Odebere uživatele z firmy.**
-* **Oprávnění:** **Administrátor / Vlastník.**
-* **Výstup (při úspěchu** **204 No Content**): **Žádné tělo odpovědi.**
+**Obsahuje standardní CRUD operace pro správu členů firmy (**GET**,** **POST**, **PATCH /{id}**, **DELETE /{id}**).
 
 ### Získání úkolů přiřazených členovi
 
 * **Metoda:** **GET**
 * **URL:** **/companies/{company_id}/members/{user_id}/tasks**
 * **Účel:** **Zobrazí seznam všech úkolů přiřazených danému uživateli.**
-* **Oprávnění:**
-
-  * **Administrátor / Vlastník: Může zobrazit úkoly libovolného člena.**
-  * **Běžný člen: Může zobrazit pouze své vlastní úkoly.**
-* **Výstup (při úspěchu** **200 OK**): **Seznam objektů úkolů.**
+* **Oprávnění:** **Admin vidí úkoly všech, běžný člen jen své.**
 
 ---
 
 ## Klienti (**/companies//clients**)
 
-**Tato sekce obsahuje standardní CRUD operace (**POST **pro vytvoření,** **GET** **pro seznam,** **GET /{id}** **pro detail,** **PATCH /{id}** **pro úpravu,** **DELETE /{id}** **pro smazání).**
+**Obsahuje standardní CRUD operace (**POST**,** **GET**, **GET /{id}**, **PATCH /{id}**, **DELETE /{id}**).
 
 ### Získání podkladů pro fakturaci za období
 
 * **Metoda:** **GET**
 * **URL:** **/companies/{company_id}/clients/{client_id}/billing-report**
-* **Účel:** **Agreguje veškerou práci a materiál pro klienta napříč všemi jeho zakázkami v daném časovém období.**
+* **Účel:** **Agreguje veškerou práci a materiál pro klienta v daném období.**
 * **Oprávnění:** **Administrátor / Vlastník.**
-* **Parametry (Query):**
-
-  * **start_date**: **YYYY-MM-DD** **(povinné)**
-  * **end_date**: **YYYY-MM-DD** **(povinné)**
-* **Výstup (při úspěchu** **200 OK**): **Detailní report s rozpisem práce a materiálu.**
-* **Možné chyby:**
-
-  * **404 Not Found**: Klient neexistuje.
+* **Parametry (Query):** **start_date** **(YYYY-MM-DD),** **end_date** **(YYYY-MM-DD).**
 
 ---
 
 ## Lokace (**/companies//locations**)
 
-### Získání seznamu lokací
-
-* **Metoda:** **GET**
-* **URL:** **/companies/{company_id}/locations**
-* **Účel:** **Vrátí seznam všech skladových lokací ve firmě.**
-* **Oprávnění:** **Administrátor / Vlastník.**
-* **Výstup (při úspěchu** **200 OK**):
-
-  **code**JSON
-
-  ```
-  [
-    {
-      "name": "Hlavní sklad",
-      "description": "Centrální sklad",
-      "id": 1,
-      "authorized_users": [
-        { "id": 1, "email": "admin@fir.ma" }
-      ]
-    }
-  ]
-  ```
-
-### Vytvoření nové lokace
-
-* **Metoda:** **POST**
-* **URL:** **/companies/{company_id}/locations**
-* **Účel:** **Vytvoří novou skladovou lokaci.**
-* **Oprávnění:** **Administrátor / Vlastník.**
-* **Vstup (JSON):**
-
-  **code**JSON
-
-  ```
-  {
-    "name": "Vozidlo 1 - Technik Novák",
-    "description": "VW Transporter RZ 1AB 2345"
-  }
-  ```
-* **Výstup (při úspěchu** **201 Created**): **Objekt nově vytvořené lokace.**
+**Obsahuje standardní CRUD operace (**POST**,** **GET**, **PATCH /{id}**, **DELETE /{id}**).
 
 ### Získání mých přístupných lokací
 
 * **Metoda:** **GET**
-* **URL:** **/companies/{company_id}/my-locations**
+* **URL:** **/companies/{company_id}/locations/my-locations**
 * **Účel:** **Vrátí seznam lokací, ke kterým má přihlášený uživatel přístup.**
 * **Oprávnění:** **Člen firmy. (Admin vidí všechny, člen jen ty s oprávněním).**
-* **Výstup (při úspěchu** **200 OK**): **Seznam objektů lokací.**
 
 ### Získání seznamu položek na lokaci
 
 * **Metoda:** **GET**
 * **URL:** **/companies/{company_id}/locations/{location_id}/inventory**
 * **Účel:** **Zobrazí seznam položek a jejich množství na konkrétní lokaci.**
-* **Oprávnění:** **Administrátor / Vlastník nebo člen s oprávněním k dané lokaci.**
-* **Výstup (při úspěchu** **200 OK**):
-
-  **code**JSON
-
-  ```
-  [
-    {
-      "quantity": 10,
-      "inventory_item": {
-        "id": 5,
-        "name": "Položka A",
-        "sku": "SKU-A"
-      }
-    }
-  ]
-  ```
+* **Oprávnění:** **Admin nebo člen s oprávněním k dané lokaci.**
 
 ### Správa oprávnění k lokaci (**.../locations//permissions**)
 
-* **GET /**: Získá seznam uživatelů s přístupem k lokaci. (Admin)
-* **POST /**: Přidá uživateli oprávnění k lokaci. (Admin)
+* **GET /**: Získá seznam uživatelů s přístupem k lokaci (Admin).
+* **POST /**: Přidá uživateli oprávnění k lokaci (Admin).
 
   * **Vstup (JSON):** **{"user_email": "uzivatel@fir.ma"}**
-* **DELETE /{user_id}**: Odebere uživateli oprávnění k lokaci. (Admin)
+* **DELETE /{user_id}**: Odebere uživateli oprávnění k lokaci (Admin).
 
 ---
 
 ## Sklad (**/companies//inventory**)
 
-### Získání seznamu skladových položek
-
-* **Metoda:** **GET**
-* **URL:** **/companies/{company_id}/inventory**
-* **Účel:** **Vrátí stránkovaný seznam všech položek ve skladu.**
-* **Oprávnění:** **Člen firmy.**
-* **Parametry (Query):**
-
-  * **category_id**: **integer** **(nepovinné) - filtruje položky v dané kategorii a jejích podkategoriích.**
-  * **skip**: **integer** **(nepovinné, default 0)**
-  * **limit**: **integer** **(nepovinné, default 100)**
-* **Výstup (při úspěchu** **200 OK**): **Seznam skladových položek s celkovým množstvím a rozpisem po lokacích.**
-
-### Vytvoření nové skladové položky
-
-* **Metoda:** **POST**
-* **URL:** **/companies/{company_id}/inventory**
-* **Účel:** **Vytvoří novou položku ve skladu s nulovým počátečním stavem.**
-* **Oprávnění:** **Administrátor / Vlastník.**
-* **Vstup (JSON):** **Objekt** **InventoryItemCreateIn**.
-* **Výstup (při úspěchu** **201 Created**): **Objekt nově vytvořené položky.**
+**Obsahuje standardní CRUD operace (**POST**,** **GET**, **GET /{id}**, **PATCH /{id}**, **DELETE /{id}**).
 
 ### Nahrání obrázku k položce
 
@@ -372,7 +161,6 @@ Authorization: Bearer <váš_access_token>
 * **Účel:** **Nahraje a přiřadí obrázek ke skladové položce.**
 * **Oprávnění:** **Administrátor / Vlastník.**
 * **Vstup (Multipart Form Data):** **Soubor s obrázkem.**
-* **Výstup (při úspěchu** **200 OK**): **Aktualizovaný objekt skladové položky.**
 
 ---
 
@@ -384,19 +172,7 @@ Authorization: Bearer <váš_access_token>
 * **URL:** **/companies/{company_id}/inventory/movements/place**
 * **Účel:** **Přidá zadané množství položky na konkrétní lokaci.**
 * **Oprávnění:** **Administrátor / Vlastník.**
-* **Vstup (JSON):**
-
-  **code**JSON
-
-  ```
-  {
-    "inventory_item_id": 1,
-    "location_id": 1,
-    "quantity": 100,
-    "details": "Naskladnění od dodavatele XYZ"
-  }
-  ```
-* **Výstup (při úspěchu** **200 OK**): **Kompletní aktualizovaný objekt skladové položky.**
+* **Vstup (JSON):** **{"inventory_item_id": 1, "location_id": 1, "quantity": 100}**
 
 ### Přesun položky mezi lokacemi
 
@@ -404,25 +180,88 @@ Authorization: Bearer <váš_access_token>
 * **URL:** **/companies/{company_id}/inventory/movements/transfer**
 * **Účel:** **Přesune zadané množství položky z jedné lokace na druhou.**
 * **Oprávnění:** **Administrátor / Vlastník.**
+* **Vstup (JSON):** **{"inventory_item_id": 1, "from_location_id": 1, "to_location_id": 2, "quantity": 10}**
+
+### Odpis položky ze skladu
+
+* **Metoda:** **POST**
+* **URL:** **/companies/{company_id}/inventory/movements/write-off**
+* **Účel:** **Odebere (odepíše) položku ze skladu z důvodu poškození, ztráty atd.**
+* **Oprávnění:** **Administrátor / Vlastník.**
+* **Vstup (JSON):** **{"inventory_item_id": 1, "location_id": 1, "quantity": 5, "details": "Poškozeno"}**
+
+---
+
+## Požadavky na materiál (**.../picking-orders**)
+
+### Vytvoření požadavku na materiál
+
+* **Metoda:** **POST**
+* **URL:** **/companies/{company_id}/picking-orders**
+* **Účel:** **Umožňuje uživateli vytvořit požadavek na přípravu materiálu.**
+* **Oprávnění:** **Člen firmy.**
 * **Vstup (JSON):**
 
   **code**JSON
 
   ```
   {
-    "inventory_item_id": 1,
-    "from_location_id": 1,
-    "to_location_id": 2,
-    "quantity": 10
+    "source_location_id": 1,
+    "destination_location_id": 2,
+    "items": [
+      { "inventory_item_id": 1, "requested_quantity": 10 },
+      { "requested_item_description": "Nová svorka", "requested_quantity": 5 }
+    ]
   }
   ```
-* **Výstup (při úspěchu** **200 OK**): **Kompletní aktualizovaný objekt skladové položky.**
+
+### Získání seznamu požadavků
+
+* **Metoda:** **GET**
+* **URL:** **/companies/{company_id}/picking-orders**
+* **Účel:** **Zobrazí seznam všech požadavků na materiál.**
+* **Oprávnění:** **Člen firmy.**
+* **Parametry (Query):** **status** **(nepovinné, filtruje podle stavu).**
+
+### Získání detailu požadavku
+
+* **Metoda:** **GET**
+* **URL:** **/companies/{company_id}/picking-orders/{order_id}**
+* **Účel:** **Vrátí kompletní detail jednoho požadavku na materiál.**
+* **Oprávnění:** **Člen firmy.**
+
+### Změna stavu požadavku
+
+* **Metoda:** **PATCH**
+* **URL:** **/companies/{company_id}/picking-orders/{order_id}/status**
+* **Účel:** **Umožňuje změnit stav požadavku (např. na** **in_progress** **nebo** **cancelled**).
+* **Oprávnění:** **Člen firmy.**
+* **Vstup (JSON):** **{"status": "in_progress"}**
+
+### Splnění požadavku na materiál
+
+* **Metoda:** **POST**
+* **URL:** **/companies/{company_id}/picking-orders/{order_id}/fulfill**
+* **Účel:** **Umožňuje skladníkovi potvrdit vychystání materiálu a provést skladové přesuny.**
+* **Oprávnění:** **Člen firmy.**
+* **Vstup (JSON):**
+
+  **code**JSON
+
+  ```
+  {
+    "items": [
+      { "picking_order_item_id": 1, "picked_quantity": 10 },
+      { "picking_order_item_id": 2, "picked_quantity": 5, "inventory_item_id": 15 }
+    ]
+  }
+  ```
 
 ---
 
 ## Kategorie Skladu (**.../categories**)
 
-**Obsahuje standardní CRUD operace (**POST**,** **GET**, **PATCH /{id}**, **DELETE /{id}**) pro správu stromové struktury kategorií. Vyžaduje oprávnění člena firmy.
+**Obsahuje standardní CRUD operace (**POST**,** **GET**, **PATCH /{id}**, **DELETE /{id}**) pro správu kategorií.
 
 ---
 
@@ -434,28 +273,18 @@ Authorization: Bearer <váš_access_token>
 
 * **Metoda:** **POST**
 * **URL:** **/companies/{company_id}/work-orders/{work_order_id}/status**
-* **Účel:** **Změní stav zakázky (např. na 'in_progress', 'completed').**
-* **Oprávnění:** **Člen firmy.**
 * **Vstup (JSON):** **{"status": "completed"}**
 
 ### Kopírování zakázky
 
 * **Metoda:** **POST**
 * **URL:** **/companies/{company_id}/work-orders/{work_order_id}/copy**
-* **Účel:** **Vytvoří novou zakázku jako kopii existující, včetně jejích úkolů.**
-* **Oprávnění:** **Člen firmy.**
-* **Výstup (při úspěchu** **201 Created**): **Objekt nově vytvořené zakázky.**
 
 ### Získání podkladů pro fakturaci zakázky
 
 * **Metoda:** **GET**
 * **URL:** **/companies/{company_id}/work-orders/{work_order_id}/billing-report**
-* **Účel:** **Vytvoří podklady pro fakturaci pro jednu konkrétní zakázku.**
 * **Oprávnění:** **Administrátor / Vlastník.**
-* **Parametry (Query):**
-
-  * **start_date**: **YYYY-MM-DD** **(nepovinné)**
-  * **end_date**: **YYYY-MM-DD** **(nepovinné)**
 
 ---
 
@@ -467,47 +296,42 @@ Authorization: Bearer <váš_access_token>
 
 * **Metoda:** **POST**
 * **URL:** **.../tasks/{task_id}/assign**
-* **Účel:** **Přiřadí úkol konkrétnímu členovi firmy.**
-* **Oprávnění:** **Člen firmy.**
-* **Vstup (JSON):** **{"assignee_id": 5}** **(pro od-přiřazení** **{"assignee_id": null}**)
+* **Vstup (JSON):** **{"assignee_id": 5}**
 
 ### Zapsání použitého materiálu k úkolu
 
 * **Metoda:** **POST**
 * **URL:** **.../tasks/{task_id}/inventory**
-* **Účel:** **Zaznamená spotřebu materiálu na úkolu a sníží jeho stav na dané lokaci.**
-* **Oprávnění:** **Člen firmy.**
-* **Vstup (JSON):**
+* **Vstup (JSON):** **{"inventory_item_id": 1, "quantity": 2, "from_location_id": 2}**
 
-  **code**JSON
+### Naskladnění a vyskladnění materiálu přímo na úkol
 
-  ```
-  {
-    "inventory_item_id": 1,
-    "quantity": 2,
-    "from_location_id": 2
-  }
-  ```
+* **Metoda:** **POST**
+* **URL:** **.../tasks/{task_id}/inventory/direct-assign**
+* **Účel:** **Zaznamená spotřebu materiálu, který přišel přímo na stavbu (mimo sklad).**
+* **Vstup (JSON):** **{"inventory_item_id": 1, "quantity": 1, "details": "Koupeno na místě"}**
+
+### Odebrání použitého materiálu z úkolu
+
+* **Metoda:** **DELETE**
+* **URL:** **.../tasks/{task_id}/inventory/{used_item_id}**
+* **Účel:** **Odebere záznam o spotřebě. Pokud byl materiál ze skladu, vrátí ho na původní lokaci. Pokud byl z přímého nákupu, naskladní ho na výchozí sklad firmy.**
 
 ### Získání celkového počtu odpracovaných hodin
 
 * **Metoda:** **GET**
 * **URL:** **.../tasks/{task_id}/total-hours**
-* **Účel:** **Sečte všechny odpracované hodiny na daném úkolu.**
-* **Oprávnění:** **Člen firmy.**
 
 ### Získání záznamů docházky (activity feed)
 
 * **Metoda:** **GET**
 * **URL:** **.../tasks/{task_id}/time-logs**
-* **Účel:** **Vrátí chronologický seznam všech záznamů z docházky pro daný úkol.**
-* **Oprávnění:** **Člen firmy.**
 
 ---
 
 ## Typy Práce (**/companies//work-types**)
 
-**Obsahuje** **GET** **pro získání seznamu a** **POST** **pro vytvoření nového typu práce (např. "Programování", "Montáž") a jeho hodinové sazby. Vyžaduje administrátorská oprávnění.**
+**Obsahuje** **GET** **pro získání seznamu a** **POST** **pro vytvoření typu práce a jeho sazby (Admin).**
 
 ---
 
@@ -517,35 +341,13 @@ Authorization: Bearer <váš_access_token>
 
 * **Metoda:** **POST**
 * **URL:** **/invites/companies/{company_id}**
-* **Účel:** **Vygeneruje unikátní token pro pozvání nového člena e-mailem.**
-* **Oprávnění:** **Člen firmy.**
-* **Vstup (JSON):**
-
-  **code**JSON
-
-  ```
-  {
-    "email": "pozvany.uzivatel@email.com",
-    "role": "member"
-  }
-  ```
+* **Vstup (JSON):** **{"email": "pozvany@email.com", "role": "member"}**
 
 ### Přijetí pozvánky
 
 * **Metoda:** **POST**
 * **URL:** **/invites/accept**
-* **Účel:** **Přijme pozvánku pomocí tokenu. Vytvoří uživatele, pokud neexistuje, a přidá ho do firmy.**
-* **Oprávnění:** **Žádné.**
-* **Vstup (JSON):**
-
-  **code**JSON
-
-  ```
-  {
-    "token": "unikátní_token_z_pozvánky",
-    "password": "pokud-je-uzivatel-novy-nastavi-si-heslo"
-  }
-  ```
+* **Vstup (JSON):** **{"token": "...", "password": "..."}**
 
 ---
 
@@ -555,22 +357,8 @@ Authorization: Bearer <váš_access_token>
 
 * **Metoda:** **POST**
 * **URL:** **/companies/{company_id}/time-logs**
-* **Účel:** **Vytvoří nový záznam v docházce (práce, dovolená, nemoc atd.).**
 * **Oprávnění:** **Člen firmy.**
 * **Vstup (JSON):** **Objekt** **TimeLogCreateIn**. Pro typ **work** **je nutné uvést** **task_id** **a** **work_type_id**.
-
-  **code**JSON
-
-  ```
-  {
-    "start_time": "2025-10-20T08:00:00Z",
-    "end_time": "2025-10-20T16:30:00Z",
-    "entry_type": "work",
-    "work_type_id": 1,
-    "task_id": 1,
-    "break_duration_minutes": 30
-  }
-  ```
 
 ---
 
@@ -580,18 +368,17 @@ Authorization: Bearer <váš_access_token>
 
 * **Metoda:** **GET**
 * **URL:** **/companies/{company_id}/audit-logs**
-* **Účel:** **Vrátí seznam všech záznamů o pohybech a změnách na skladu.**
 * **Oprávnění:** **Administrátor / Vlastník.**
-* **Parametry (Query):** **Filtry pro** **item_id**, **user_id**, **start_date**, **end_date**, **skip**, **limit**.
+* **Parametry (Query):** **Filtry pro** **item_id**, **user_id**, **start_date**, **end_date**, atd.
 
 ---
 
 ## SMTP Nastavení (**.../smtp-settings**)
 
-**Obsahuje** **GET** **pro získání,** **PUT** **pro vytvoření/aktualizaci a** **POST /test** **pro odeslání testovacího e-mailu. Slouží k nastavení odchozího e-mailového serveru pro notifikace. Vyžaduje administrátorská oprávnění.**
+**Obsahuje** **GET**, **PUT** **a** **POST /test** **pro nastavení odchozího e-mailového serveru (Admin).**
 
 ---
 
 ## Notifikační Triggery (**.../triggers**)
 
-**Obsahuje standardní CRUD operace (**POST**,** **GET**, **PATCH /{id}**, **DELETE /{id}**) pro správu automatických notifikací (např. upozornění na nízký stav zásob, překročení rozpočtu zakázky). Vyžaduje administrátorská oprávnění.
+**Obsahuje standardní CRUD operace (**POST**,** **GET**, **PATCH /{id}**, **DELETE /{id}**) pro správu automatických notifikací (Admin).

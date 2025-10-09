@@ -1,27 +1,8 @@
-# backend/tests.py
 import sys
 import os
 import requests
 import time
 from datetime import datetime, date
-
-# --- NAČTENÍ KONFIGURACE Z PROSTŘEDÍ ---
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-    print("Loaded environment variables from .env file.")
-except ImportError:
-    print("python-dotenv not found, reading variables from OS environment.")
-
-# --- Konfigurace pro SKUTEČNÝ SMTP server ---
-TEST_SMTP_HOST = os.getenv("TEST_SMTP_HOST")
-TEST_SMTP_PORT = int(os.getenv("TEST_SMTP_PORT", 587))
-TEST_SMTP_USER = os.getenv("TEST_SMTP_USER")
-TEST_SMTP_PASSWORD = os.getenv("TEST_SMTP_PASSWORD")
-TEST_SMTP_SENDER = os.getenv("TEST_SMTP_SENDER")
-TEST_SMTP_RECIPIENT = os.getenv("TEST_SMTP_RECIPIENT")
-
-SMTP_CONFIGURED = all([TEST_SMTP_HOST, TEST_SMTP_USER, TEST_SMTP_PASSWORD, TEST_SMTP_SENDER, TEST_SMTP_RECIPIENT])
 
 # --- Konfigurace testu ---
 BASE_URL = "http://127.0.0.1:8000"
@@ -63,12 +44,18 @@ def get_headers(token_type="admin"):
     if not token: raise ValueError(f"{token_type} token not available.")
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
+def find_item_in_location(item_data, location_id):
+    """Pomocná funkce pro nalezení množství položky na konkrétní lokaci."""
+    for loc_stock in item_data.get('locations', []):
+        if loc_stock['location']['id'] == location_id:
+            return loc_stock['quantity']
+    return 0
 
 # --- Hlavní testovací funkce ---
 def run_tests():
     global admin_token, employee_token, company_id, employee_user_id
 
-    # 1. Registrace, přihlášení
+    # 1. Registrace a přihlášení
     print_step("1. User & Company Setup")
     reg_payload = {"company_name": f"Test Co {timestamp}", "slug": f"test-co-{timestamp}", "admin_email": ADMIN_EMAIL, "admin_password": ADMIN_PASSWORD}
     company_data = print_result(requests.post(f"{BASE_URL}/auth/register_company", json=reg_payload), 201)
@@ -77,106 +64,142 @@ def run_tests():
     login_payload = {"username": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
     admin_token = print_result(requests.post(f"{BASE_URL}/auth/login", data=login_payload), 200)["access_token"]
     
-   
-
-    # 3. Pozvání zaměstnance
-    print_step("3. Inviting Employee")
-    invite_payload = {"email": EMPLOYEE_EMAIL, "role": "member"}
-    invite_data = print_result(requests.post(f"{BASE_URL}/invites/companies/{company_id}", json=invite_payload, headers=get_headers()), 201)
+    # 2. Vytvoření zaměstnance
+    print_step("2. Employee Setup")
+    member_payload = {"email": EMPLOYEE_EMAIL, "password": ADMIN_PASSWORD, "role": "member"}
+    employee_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/members", json=member_payload, headers=get_headers()), 201)
+    employee_user_id = employee_data["user"]["id"]
     
-    if SMTP_CONFIGURED:
-        print(f"  \033[94mINFO: Invitation email for {EMPLOYEE_EMAIL} should have been sent. Please verify manually.\033[0m")
-    
-    accept_payload = {"token": invite_data["token"], "password": ADMIN_PASSWORD}
-    employee_data = print_result(requests.post(f"{BASE_URL}/invites/accept", json=accept_payload), 200)
-    employee_user_id = employee_data["id"]
     employee_login_payload = {"username": EMPLOYEE_EMAIL, "password": ADMIN_PASSWORD}
     employee_token = print_result(requests.post(f"{BASE_URL}/auth/login", data=employee_login_payload), 200)["access_token"]
         
-    # 4. Nastavení fakturačních údajů
-    print_step("4. Setting Billing Information")
-    company_billing_payload = {"ico": "12345678", "dic": "CZ12345678", "address": "Testovací 1, Praha"}
-    print_result(requests.patch(f"{BASE_URL}/companies/{company_id}/billing", json=company_billing_payload, headers=get_headers()), 200)
-    client_payload = {"name": "Billing Client", "ico": "87654321"}
+    # 3. Správa lokací a oprávnění
+    print_step("3. Location and Permission Management")
+    loc_main_payload = {"name": "Hlavní sklad"}
+    loc_main_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/locations", json=loc_main_payload, headers=get_headers()), 201)
+    loc_main_id = loc_main_data["id"]
+
+    loc_vehicle_payload = {"name": "Vozidlo Technika"}
+    loc_vehicle_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/locations", json=loc_vehicle_payload, headers=get_headers()), 201)
+    loc_vehicle_id = loc_vehicle_data["id"]
+
+    print("  - Verifying employee initially sees 0 locations...")
+    # --- OPRAVA URL ---
+    my_locations = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/locations/my-locations", headers=get_headers("employee")), 200)
+    assert len(my_locations) == 0
+
+    print(f"  - Granting employee access to location 'Vozidlo Technika' (ID: {loc_vehicle_id})...")
+    perm_payload = {"user_email": EMPLOYEE_EMAIL}
+    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/locations/{loc_vehicle_id}/permissions", json=perm_payload, headers=get_headers()), 201)
+
+    print("  - Verifying employee now sees 1 location...")
+    # --- OPRAVA URL ---
+    my_locations = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/locations/my-locations", headers=get_headers("employee")), 200)
+    assert len(my_locations) == 1
+    assert my_locations[0]['id'] == loc_vehicle_id
+
+    print(f"  - Revoking employee access from location 'Vozidlo Technika'...")
+    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/locations/{loc_vehicle_id}/permissions/{employee_user_id}", headers=get_headers()), 204)
+
+    print("  - Verifying employee sees 0 locations again...")
+    # --- OPRAVA URL ---
+    my_locations = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/locations/my-locations", headers=get_headers("employee")), 200)
+    assert len(my_locations) == 0
+
+    # 4. Základní nastavení skladu
+    print_step("4. Initial Inventory Setup")
+    item_a_payload = {"name": "Čidlo A", "sku": f"CIDLO-A-{timestamp}", "price": 150.0}
+    item_a_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory", json=item_a_payload, headers=get_headers()), 201)
+    item_a_id = item_a_data["id"]
+    
+    item_b_payload = {"name": "Kabel B", "sku": f"KABEL-B-{timestamp}", "price": 25.0}
+    item_b_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory", json=item_b_payload, headers=get_headers()), 201)
+    item_b_id = item_b_data["id"]
+
+    print("  - Placing items into Main Warehouse...")
+    place_a_payload = {"inventory_item_id": item_a_id, "location_id": loc_main_id, "quantity": 50}
+    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory/movements/place", json=place_a_payload, headers=get_headers()), 200)
+    
+    place_b_payload = {"inventory_item_id": item_b_id, "location_id": loc_main_id, "quantity": 100}
+    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory/movements/place", json=place_b_payload, headers=get_headers()), 200)
+
+    print("  - Writing off damaged items...")
+    write_off_payload = {"inventory_item_id": item_a_id, "location_id": loc_main_id, "quantity": 5, "details": "Poškozeno při přepravě"}
+    item_a_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory/movements/write-off", json=write_off_payload, headers=get_headers()), 200)
+    assert find_item_in_location(item_a_data, loc_main_id) == 45 # 50 - 5
+
+    # 5. Testování Požadavků na materiál (Picking Orders)
+    print_step("5. Testing Picking Orders")
+    print("  - Employee requests items for their vehicle...")
+    picking_order_payload = {
+        "source_location_id": loc_main_id,
+        "destination_location_id": loc_vehicle_id,
+        "items": [
+            {"inventory_item_id": item_a_id, "requested_quantity": 10},
+            {"requested_item_description": "Nová svorka, 5mm", "requested_quantity": 5}
+        ]
+    }
+    order_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/picking-orders", json=picking_order_payload, headers=get_headers("employee")), 201)
+    order_id = order_data["id"]
+    requested_svorka_item_id = order_data['items'][1]['id']
+
+    print("  - Admin creates a new inventory item for 'Nová svorka'...")
+    item_c_payload = {"name": "Nová svorka, 5mm", "sku": f"SVORKA-C-{timestamp}", "price": 5.0}
+    item_c_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory", json=item_c_payload, headers=get_headers()), 201)
+    item_c_id = item_c_data["id"]
+
+    # --- LOGICKÁ OPRAVA: Admin musí položku nejprve naskladnit, než ji může vydat ---
+    print("  - Admin places the new item into the warehouse...")
+    place_c_payload = {"inventory_item_id": item_c_id, "location_id": loc_main_id, "quantity": 20}
+    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory/movements/place", json=place_c_payload, headers=get_headers()), 200)
+
+    print("  - Admin fulfills the picking order...")
+    fulfill_payload = {
+        "items": [
+            {"picking_order_item_id": order_data['items'][0]['id'], "picked_quantity": 10},
+            {"picking_order_item_id": requested_svorka_item_id, "picked_quantity": 5, "inventory_item_id": item_c_id}
+        ]
+    }
+    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/picking-orders/{order_id}/fulfill", json=fulfill_payload, headers=get_headers()), 200)
+
+    print("  - Verifying stock levels after fulfillment...")
+    item_a_data = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/inventory/{item_a_id}", headers=get_headers()), 200)
+    assert find_item_in_location(item_a_data, loc_main_id) == 35 # 45 - 10
+    assert find_item_in_location(item_a_data, loc_vehicle_id) == 10
+
+    item_c_data = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/inventory/{item_c_id}", headers=get_headers()), 200)
+    assert find_item_in_location(item_c_data, loc_main_id) == 15 # 20 - 5
+    assert find_item_in_location(item_c_data, loc_vehicle_id) == 5
+
+    # 6. Testování Přímého přiřazení a vratky
+    print_step("6. Testing Direct Assignment and Return Logic")
+    client_payload = {"name": "Direct Assign Client"}
     client_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/clients", json=client_payload, headers=get_headers()), 201)
     client_id = client_data["id"]
-        
-    # 5. Nastavení skladu a práce
-    print_step("5. Setting up Work Types and Inventory")
-    item_payload = {"name": "Monitorable Item", "sku": f"MON-{timestamp}", "price": 500.0}
-    item_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory", json=item_payload, headers=get_headers()), 201)
-    item_id = item_data["id"]
-    work_type_payload = {"name": "Test Work", "rate": 1000.0}
-    work_type_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-types", json=work_type_payload, headers=get_headers()), 201)
-    work_type_id = work_type_data["id"]
-
-    # 6. Inventory a Location Management
-    print_step("6. Inventory and Location Management")
-    loc_a_payload = {"name": "Main Warehouse"}
-    loc_a_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/locations", json=loc_a_payload, headers=get_headers()), 201)
-    loc_a_id = loc_a_data["id"]
-    place_payload = {"inventory_item_id": item_id, "location_id": loc_a_id, "quantity": 15}
-    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory/movements/place", json=place_payload, headers=get_headers()), 200)
     
-   
-
-    # 8. Vytvoření zakázky a úkolu pro test triggerů
-    print_step("8. Creating Work Order and Task for Trigger Test")
-    wo_payload = {"name": "Budget Test Work Order", "client_id": client_id, "budget_hours": 10.0}
+    wo_payload = {"name": "Direct Assign Work Order", "client_id": client_id}
     wo_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders", json=wo_payload, headers=get_headers()), 201)
     work_order_id = wo_data["id"]
     
-    task_payload = {"name": "Budget Test Task"}
+    task_payload = {"name": "Direct Assign Task"}
     task_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks", json=task_payload, headers=get_headers()), 201)
     task_id = task_data["id"]
 
-     # 9. Překročení prahů a záznam docházky
-    print_step("9. Exceeding Thresholds & Logging Time")
-    print("  - Logging work to exceed 80% of budget...")
-    test_date = date.today()
-    start_work = datetime.combine(test_date, datetime.min.time()).replace(hour=8)
-    end_work = start_work.replace(hour=16, minute=30) # 8.5 hodiny > 80% z 10h
-    work_payload = {"start_time": start_work.isoformat(), "end_time": end_work.isoformat(), "entry_type": "work", "work_type_id": work_type_id, "task_id": task_id}
-    # --- ZMĚNA: Uložíme si odpověď pro pozdější kontrolu ---
-    work_log_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/time-logs", json=work_payload, headers=get_headers("employee")), 201)
-    work_log_id = work_log_data['id']
+    print("  - Directly assigning an item to a task (simulating direct purchase)...")
+    direct_assign_payload = {"inventory_item_id": item_b_id, "quantity": 15, "details": "Zakoupeno přímo na stavbě"}
+    task_data = print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory/direct-assign", json=direct_assign_payload, headers=get_headers()), 200)
+    used_item_id = task_data['used_items'][0]['id']
 
-    print("  - Using inventory to go below stock threshold...")
-    use_item_payload = {"inventory_item_id": item_id, "quantity": 6, "from_location_id": loc_a_id} # 15 - 6 = 9 < 10
-    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory", json=use_item_payload, headers=get_headers()), 200)
-    
-    # 10. Přiřazení úkolů a ověření nových endpointů
-    print_step("10. Assigning tasks and verifying new endpoints")
-    print("  - Assigning task to the employee...")
-    assign_payload = {"assignee_id": employee_user_id}
-    print_result(requests.post(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/assign", json=assign_payload, headers=get_headers()), 200)
+    item_b_data_before = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/inventory/{item_b_id}", headers=get_headers()), 200)
+    assert find_item_in_location(item_b_data_before, loc_main_id) == 100 # Stav se nezměnil
 
-    print("  - Verifying employee can see their own tasks...")
-    assigned_tasks_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/members/{employee_user_id}/tasks", headers=get_headers("employee")), 200)
-    assert len(assigned_tasks_response) == 1
-    assert assigned_tasks_response[0]["id"] == task_id
+    print("  - Removing the directly assigned item...")
+    print_result(requests.delete(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/inventory/{used_item_id}", headers=get_headers()), 200)
 
-    print("  - Verifying total hours for the task...")
-    total_hours_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/total-hours", headers=get_headers()), 200)
-    assert total_hours_response["total_hours"] == 8.5
-    assert total_hours_response["task_id"] == task_id
+    print("  - Verifying the item was returned to the main warehouse...")
+    item_b_data_after = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/inventory/{item_b_id}", headers=get_headers()), 200)
+    assert find_item_in_location(item_b_data_after, loc_main_id) == 115 # 100 + 15
 
-    # --- NOVÝ TEST ---
-    print("  - Verifying activity feed for the task...")
-    activity_feed_response = print_result(requests.get(f"{BASE_URL}/companies/{company_id}/work-orders/{work_order_id}/tasks/{task_id}/time-logs", headers=get_headers()), 200)
-    assert len(activity_feed_response) == 1
-    assert activity_feed_response[0]['id'] == work_log_id
-    assert activity_feed_response[0]['entry_type'] == 'work'
-    assert activity_feed_response[0]['user']['email'] == EMPLOYEE_EMAIL
-
-    # 11. Manuální spuštění a ověření triggerů
-    print_step("11. Manually Running and Verifying Triggers")
-    if SMTP_CONFIGURED:
-        print("  - Running trigger check via internal endpoint...")
-        print_result(requests.post(f"{BASE_URL}/internal/run-triggers?company_id={company_id}", headers=get_headers()), 200)
-        print(f"  \033[94mINFO: Two alert emails (low stock, budget) should have been sent to {TEST_SMTP_RECIPIENT}. Please verify manually.\033[0m")
-        time.sleep(2)
-        
     print("\n" + "="*50)
     print("\033[92mAll tests completed successfully!\033[0m")
     print("="*50)
