@@ -20,6 +20,7 @@ from app.core.dependencies import require_company_access
 
 router = APIRouter(prefix="/companies/{company_id}/picking-orders", tags=["picking-orders"])
 
+# --- UPRAVENÁ FUNKCE ---
 async def get_picking_order_or_404(db: AsyncSession, company_id: int, order_id: int) -> PickingOrder:
     stmt = (
         select(PickingOrder)
@@ -28,10 +29,12 @@ async def get_picking_order_or_404(db: AsyncSession, company_id: int, order_id: 
             selectinload(PickingOrder.requester),
             selectinload(PickingOrder.source_location).selectinload(Location.authorized_users),
             selectinload(PickingOrder.destination_location).selectinload(Location.authorized_users),
+            # Přidáváme finální, nejhlubší úroveň vnoření
             selectinload(PickingOrder.items)
                 .selectinload(PickingOrderItem.inventory_item)
                 .selectinload(InventoryItem.locations)
-                .selectinload(ItemLocationStock.location),
+                .selectinload(ItemLocationStock.location)
+                .selectinload(Location.authorized_users), # TATO ŘÁDKA JE NOVÁ
             selectinload(PickingOrder.items)
                 .selectinload(PickingOrderItem.inventory_item)
                 .selectinload(InventoryItem.category)
@@ -45,6 +48,7 @@ async def get_picking_order_or_404(db: AsyncSession, company_id: int, order_id: 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Picking order not found")
     return order
 
+
 @router.post("", response_model=PickingOrderOut, status_code=status.HTTP_201_CREATED)
 async def create_picking_order(
     company_id: int,
@@ -52,22 +56,26 @@ async def create_picking_order(
     db: AsyncSession = Depends(get_db),
     token: Dict[str, Any] = Depends(require_company_access)
 ):
-    # ... (beze změny)
     requester_id = int(token.get("sub"))
+    
     order = PickingOrder(
-        company_id=company_id, requester_id=requester_id,
+        company_id=company_id,
+        requester_id=requester_id,
         source_location_id=payload.source_location_id,
         destination_location_id=payload.destination_location_id,
         notes=payload.notes
     )
     db.add(order)
+    
     for item_in in payload.items:
         order_item = PickingOrderItem(
-            picking_order=order, inventory_item_id=item_in.inventory_item_id,
+            picking_order=order,
+            inventory_item_id=item_in.inventory_item_id,
             requested_item_description=item_in.requested_item_description,
             requested_quantity=item_in.requested_quantity
         )
         db.add(order_item)
+        
     await db.commit()
     return await get_picking_order_or_404(db, company_id, order.id)
 
@@ -78,26 +86,34 @@ async def list_picking_orders(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    # ... (beze změny)
+    # Pro konzistenci upravíme i tento dotaz
     stmt = (
-        select(PickingOrder).where(PickingOrder.company_id == company_id)
+        select(PickingOrder)
+        .where(PickingOrder.company_id == company_id)
         .options(
             selectinload(PickingOrder.requester),
             selectinload(PickingOrder.source_location).selectinload(Location.authorized_users),
             selectinload(PickingOrder.destination_location).selectinload(Location.authorized_users),
-            selectinload(PickingOrder.items).selectinload(PickingOrderItem.inventory_item)
-            .selectinload(InventoryItem.locations).selectinload(ItemLocationStock.location),
-            selectinload(PickingOrder.items).selectinload(PickingOrderItem.inventory_item)
-            .selectinload(InventoryItem.category).selectinload(InventoryCategory.children)
-            .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
-        ).order_by(PickingOrder.created_at.desc())
+            selectinload(PickingOrder.items)
+                .selectinload(PickingOrderItem.inventory_item)
+                .selectinload(InventoryItem.locations)
+                .selectinload(ItemLocationStock.location)
+                .selectinload(Location.authorized_users), # TATO ŘÁDKA JE NOVÁ
+            selectinload(PickingOrder.items)
+                .selectinload(PickingOrderItem.inventory_item)
+                .selectinload(InventoryItem.category)
+                .selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children)
+        )
+        .order_by(PickingOrder.created_at.desc())
     )
     if status:
         stmt = stmt.where(PickingOrder.status == status)
+        
     result = await db.execute(stmt)
     return result.scalars().all()
 
-# --- NOVÝ ENDPOINT PRO DETAIL ---
 @router.get("/{order_id}", response_model=PickingOrderOut, summary="Získání detailu požadavku na materiál")
 async def get_picking_order(
     company_id: int,
@@ -108,7 +124,6 @@ async def get_picking_order(
     """Vrátí kompletní detail jednoho požadavku na materiál včetně všech jeho položek."""
     return await get_picking_order_or_404(db, company_id, order_id)
 
-# --- NOVÝ ENDPOINT PRO ZMĚNU STAVU ---
 @router.patch("/{order_id}/status", response_model=PickingOrderOut, summary="Změna stavu požadavku")
 async def update_picking_order_status(
     company_id: int,
@@ -121,7 +136,6 @@ async def update_picking_order_status(
     Umožňuje změnit stav požadavku, např. z 'new' na 'in_progress' nebo 'cancelled'.
     Stav 'completed' se nastavuje výhradně přes endpoint '/fulfill'.
     """
-    # Zde stačí jednodušší dotaz, protože nepotřebujeme všechny vnořené objekty pro logiku
     order = await db.get(PickingOrder, order_id)
     if not order or order.company_id != company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Picking order not found")
@@ -140,8 +154,6 @@ async def update_picking_order_status(
     
     order.status = payload.status
     await db.commit()
-
-    # Vrátíme kompletní objekt s plně načtenými daty
     return await get_picking_order_or_404(db, company_id, order_id)
 
 
@@ -173,7 +185,7 @@ async def fulfill_picking_order(
             raise HTTPException(400, f"Item '{db_item.requested_item_description}' was requested by description, you must provide a real inventory_item_id upon fulfillment.")
         
         final_item_id = item_in.inventory_item_id or db_item.inventory_item_id
-        if not final_item_id: continue # Should not happen due to validation above
+        if not final_item_id: continue
 
         db_item.inventory_item_id = final_item_id
         db_item.picked_quantity = item_in.picked_quantity
@@ -184,9 +196,6 @@ async def fulfill_picking_order(
         log_details = ""
         log_action: AuditLogAction
 
-        # --- PŘEPRACOVANÁ LOGIKA ZDE ---
-
-        # Případ 1: Přesun mezi sklady (standardní chování)
         if order.source_location_id:
             source_stock = await db.get(ItemLocationStock, (final_item_id, order.source_location_id))
             if not source_stock or source_stock.quantity < item_in.picked_quantity:
@@ -195,13 +204,10 @@ async def fulfill_picking_order(
             
             log_details = f"Splněn požadavek #{order.id}: {item_in.picked_quantity} ks přesunuto z '{order.source_location.name}' do '{order.destination_location.name}'."
             log_action = AuditLogAction.picking_fulfilled
-        
-        # Případ 2: Pořízení nového materiálu (bez zdrojového skladu)
         else:
             log_details = f"Splněn požadavek na pořízení #{order.id}: {item_in.picked_quantity} ks naskladněno do '{order.destination_location.name}'."
             log_action = AuditLogAction.location_placed
 
-        # Společná logika pro příjem na cílovou lokaci
         dest_stock = await db.get(ItemLocationStock, (final_item_id, order.destination_location_id))
         if dest_stock:
             dest_stock.quantity += item_in.picked_quantity
@@ -209,7 +215,6 @@ async def fulfill_picking_order(
             dest_stock = ItemLocationStock(inventory_item_id=final_item_id, location_id=order.destination_location_id, quantity=item_in.picked_quantity)
             db.add(dest_stock)
 
-        # Společná logika pro auditní záznam
         log = InventoryAuditLog(
             item_id=final_item_id, user_id=user_id, company_id=company_id,
             action=log_action,

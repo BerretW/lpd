@@ -9,7 +9,7 @@ from styling import MAIN_STYLESHEET
 from .item_dialog import ItemDialog
 from .category_dialog import CategoryDialog
 from .location_dialog import LocationDialog
-from .movement_dialog import MovementDialog # Znovu přidaný import
+from .movement_dialog import MovementDialog
 from .write_off_dialog import WriteOffDialog
 from .audit_log_dialog import AuditLogDialog
 from .picking_order_create_dialog import PickingOrderCreateDialog
@@ -27,7 +27,6 @@ class MainWindow(QMainWindow):
         
         self.setStyleSheet(MAIN_STYLESHEET)
         
-        # Stavy aplikace
         self.inventory_data = []
         self.picking_orders = []
         self.categories_flat = []
@@ -43,11 +42,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
 
-        # --- HORNÍ PANEL S TLAČÍTKY ---
         top_layout = self._create_top_button_panel()
         self.layout.addLayout(top_layout)
         
-        # --- HLAVNÍ OBSAH SE ZÁLOŽKAMI ---
         self.tabs = QTabWidget()
         self.inventory_tab = self._create_inventory_tab()
         self.picking_orders_tab = self._create_picking_orders_tab()
@@ -56,15 +53,12 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.picking_orders_tab, qta.icon('fa5s.clipboard-list'), "Požadavky na materiál")
         
         self.layout.addWidget(self.tabs)
-        
-        # --- PROPOJENÍ SIGNÁLŮ ---
         self._connect_signals()
 
     def _create_top_button_panel(self):
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(0, 0, 0, 10)
         
-        # Správa
         data_group = QGroupBox("Správa položek a číselníků")
         data_layout = QHBoxLayout(data_group)
         self.add_button = QPushButton(qta.icon('fa5s.plus-circle'), " Nová položka")
@@ -76,7 +70,6 @@ class MainWindow(QMainWindow):
         data_layout.addWidget(self.locations_button)
         data_layout.addWidget(self.categories_button)
 
-        # Požadavky
         picking_group = QGroupBox("Požadavky na materiál")
         picking_layout = QHBoxLayout(picking_group)
         self.create_picking_order_button = QPushButton(qta.icon('fa5s.file-medical'), " Vytvořit požadavek")
@@ -84,7 +77,6 @@ class MainWindow(QMainWindow):
         picking_layout.addWidget(self.create_picking_order_button)
         picking_layout.addWidget(self.fulfill_picking_order_button)
         
-        # --- NOVÁ/OBNOVENÁ SKUPINA ---
         operations_group = QGroupBox("Skladové operace")
         operations_layout = QHBoxLayout(operations_group)
         self.place_button = QPushButton(qta.icon('fa5s.dolly-flatbed'), " Naskladnit / Přesunout")
@@ -92,7 +84,6 @@ class MainWindow(QMainWindow):
         operations_layout.addWidget(self.place_button)
         operations_layout.addWidget(self.write_off_button)
 
-        # Nástroje
         tools_group = QGroupBox("Nástroje a Audit")
         tools_layout = QHBoxLayout(tools_group)
         self.audit_log_button = QPushButton(qta.icon('fa5s.history'), " Historie pohybů")
@@ -104,7 +95,7 @@ class MainWindow(QMainWindow):
         
         top_layout.addWidget(data_group)
         top_layout.addWidget(picking_group)
-        top_layout.addWidget(operations_group) # Přidání nové skupiny
+        top_layout.addWidget(operations_group)
         top_layout.addWidget(tools_group)
         top_layout.addStretch()
 
@@ -115,7 +106,6 @@ class MainWindow(QMainWindow):
     def _create_inventory_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
         filter_groupbox = QGroupBox("Filtry a vyhledávání")
         filter_layout = QHBoxLayout(filter_groupbox)
         filter_layout.addWidget(QLabel("Hledat:"))
@@ -158,7 +148,6 @@ class MainWindow(QMainWindow):
     def _create_picking_orders_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
         filter_groupbox = QGroupBox("Filtrovat požadavky")
         filter_layout = QHBoxLayout(filter_groupbox)
         filter_layout.addWidget(QLabel("Stav:"))
@@ -198,24 +187,19 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self):
         self.refresh_button.clicked.connect(self.load_initial_data)
-        # Správa
         self.add_button.clicked.connect(self.add_new_item)
         self.edit_button.clicked.connect(self.edit_selected_item)
         self.inventory_table.doubleClicked.connect(self.edit_selected_item)
         self.inventory_table.itemSelectionChanged.connect(self.update_location_details_view)
         self.locations_button.clicked.connect(self.manage_locations)
         self.categories_button.clicked.connect(self.manage_categories)
-        # Požadavky
         self.create_picking_order_button.clicked.connect(self.open_create_picking_order_dialog)
         self.fulfill_picking_order_button.clicked.connect(self.open_fulfill_picking_order_dialog)
-        # Skladové operace
         self.place_button.clicked.connect(self.manage_movements)
         self.write_off_button.clicked.connect(self.open_write_off_dialog)
-        # Nástroje
         self.audit_log_button.clicked.connect(self.show_audit_logs)
         self.import_xls_button.clicked.connect(self.import_from_xls)
         self.export_inventory_button.clicked.connect(self.export_inventory_xls)
-        # Filtry a výběry
         self.search_input.textChanged.connect(self.filter_inventory_table)
         self.category_filter_combo.currentIndexChanged.connect(self.load_inventory_data)
         self.picking_status_filter.currentIndexChanged.connect(self.load_picking_orders)
@@ -236,7 +220,6 @@ class MainWindow(QMainWindow):
         categories_tree = self.api_client.get_categories()
         self.categories_flat = []
         if categories_tree: self._flatten_categories(categories_tree, self.categories_flat)
-        
         current_selection = self.category_filter_combo.currentData()
         self.category_filter_combo.blockSignals(True)
         self.category_filter_combo.clear()
@@ -285,9 +268,16 @@ class MainWindow(QMainWindow):
         self.picking_orders_table.setRowCount(len(self.picking_orders))
         for row, order in enumerate(self.picking_orders):
             dt = QDateTime.fromString(order['created_at'], Qt.DateFormat.ISODate)
+            
+            # --- OPRAVA ZDE ---
+            source_location = order.get('source_location')
+            source_name = "Hlavní sklad" if source_location is None else source_location.get('name', 'N/A')
+            
             self.picking_orders_table.setItem(row, 0, QTableWidgetItem(str(order['id'])))
             self.picking_orders_table.setItem(row, 1, QTableWidgetItem(order['status']))
-            self.picking_orders_table.setItem(row, 2, QTableWidgetItem(order.get('source_location', {}).get('name', 'N/A')))
+            self.picking_orders_table.setItem(row, 2, QTableWidgetItem(source_name))
+            # --- KONEC OPRAVY ---
+
             self.picking_orders_table.setItem(row, 3, QTableWidgetItem(order.get('destination_location', {}).get('name', 'N/A')))
             self.picking_orders_table.setItem(row, 4, QTableWidgetItem(order.get('created_by', {}).get('email', 'N/A')))
             self.picking_orders_table.setItem(row, 5, QTableWidgetItem(dt.toLocalTime().toString("dd.MM.yyyy HH:mm")))
@@ -401,7 +391,6 @@ class MainWindow(QMainWindow):
         order_data = next((o for o in self.picking_orders if o['id'] == order_id), None)
         if order_data:
             dialog = PickingOrderFulfillDialog(self.api_client, order_data, self.inventory_data, self)
-            # Propojíme signál pro obnovení inventáře
             dialog.inventory_updated.connect(self.load_inventory_data)
             if dialog.exec():
                 self.load_picking_orders()

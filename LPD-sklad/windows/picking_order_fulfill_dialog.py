@@ -3,29 +3,34 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout,
                              QPushButton, QMessageBox, QComboBox, QTableWidget,
                              QTableWidgetItem, QAbstractItemView, QHeaderView,
                              QSpinBox, QLabel, QWidget)
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal # Důležité: pyqtSignal musí být importován
 import qtawesome as qta
 
-# Importujeme dialog pro vytváření položek
 from .item_dialog import ItemDialog
 
 class PickingOrderFulfillDialog(QDialog):
-    # Signál, který vyšleme, když se vytvoří nová položka, aby si ji hlavní okno mohlo přidat
+    # --- OPRAVA: Definice signálu vrácena zpět ---
     inventory_updated = pyqtSignal()
 
     def __init__(self, api_client, order_data, inventory_data, parent=None):
         super().__init__(parent)
         self.api_client = api_client
         self.order_data = order_data
-        self.inventory_data = inventory_data
+        
+        # Vytvoříme kopii listu, abychom neupravovali data přímo v hlavním okně,
+        # dokud nedojde k obnovení z API.
+        self.inventory_data = list(inventory_data) 
 
         self.setWindowTitle(f"Zpracovat požadavek č. {order_data['id']}")
         self.setMinimumSize(800, 500)
 
         layout = QVBoxLayout(self)
         
+        source_location = order_data.get('source_location')
+        source_name = "Hlavní sklad" if source_location is None else source_location.get('name', 'N/A')
+        
         info_text = (
-            f"<b>Ze skladu:</b> {order_data['source_location']['name']}<br>"
+            f"<b>Ze skladu:</b> {source_name}<br>"
             f"<b>Do skladu:</b> {order_data['destination_location']['name']}<br>"
             f"<b>Poznámka:</b> {order_data.get('notes', '<em>bez poznámky</em>')}"
         )
@@ -50,16 +55,12 @@ class PickingOrderFulfillDialog(QDialog):
         self.items_table.setRowCount(len(items))
 
         for row, item in enumerate(items):
-            # --- OPRAVA ZDE ---
-            # Bezpečně získáme data o skladové kartě, která mohou být None
             inventory_item_data = item.get('inventory_item')
             
-            # Na základě toho určíme popis
             if inventory_item_data:
                 desc = inventory_item_data.get('name', 'CHYBA')
             else:
                 desc = item.get('requested_item_description', 'CHYBA')
-            # --- KONEC OPRAVY ---
 
             desc_cell = QTableWidgetItem(desc)
             desc_cell.setFlags(desc_cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -76,7 +77,7 @@ class PickingOrderFulfillDialog(QDialog):
             picked_spinbox.setValue(item['requested_quantity'])
             self.items_table.setCellWidget(row, 2, picked_spinbox)
 
-            if inventory_item_data is None: # Zkontrolujeme, zda je to nová položka dle popisu
+            if inventory_item_data is None:
                 widget = QWidget()
                 h_layout = QHBoxLayout(widget)
                 h_layout.setContentsMargins(2, 2, 2, 2)
@@ -101,43 +102,52 @@ class PickingOrderFulfillDialog(QDialog):
 
     def create_new_inventory_item(self, row, description):
         """Otevře dialog pro vytvoření nové položky a po úspěchu ji vybere."""
-        # Získání kategorií pro dialog
-        main_window = self.parent()
-        categories_flat = getattr(main_window, 'categories_flat', [])
+        # Získáme kategorie z rodičovského okna (pokud existují)
+        categories_flat = []
+        parent = self.parent()
+        if parent and hasattr(parent, 'categories_flat'):
+            categories_flat = parent.categories_flat
 
         dialog = ItemDialog(self.api_client, categories_flat, prefill_data={'name': description})
         if dialog.exec():
             new_item = dialog.created_item
             if new_item:
-                # Přidáme novou položku do interního seznamu
+                # Přidáme do lokálního seznamu pro tento dialog
                 self.inventory_data.append(new_item)
                 
-                # Informujeme hlavní okno, že se má obnovit (nepřímo přes signál to nefungovalo spolehlivě)
-                main_window.load_inventory_data()
-                
+                # Najdeme ComboBox na správném řádku
                 container_widget = self.items_table.cellWidget(row, 3)
-                combo = container_widget.findChild(QComboBox)
-                if combo:
-                    combo.addItem(f"{new_item['name']} (SKU: {new_item['sku']})", new_item['id'])
-                    combo.setCurrentIndex(combo.count() - 1)
+                if container_widget:
+                    combo = container_widget.findChild(QComboBox)
+                    if combo:
+                        # Přidáme novou položku do seznamu a rovnou ji vybereme
+                        combo.addItem(f"{new_item['name']} (SKU: {new_item['sku']})", new_item['id'])
+                        combo.setCurrentIndex(combo.count() - 1)
+                
+                # --- OPRAVA: Vyšleme signál hlavnímu oknu ---
+                self.inventory_updated.emit()
 
     def submit_fulfillment(self):
         items_payload = []
         for row in range(self.items_table.rowCount()):
-            order_item_id = self.order_data['items'][row]['id']
+            order_item = self.order_data['items'][row]
+            order_item_id = order_item['id']
             picked_quantity = self.items_table.cellWidget(row, 2).value()
             
             item_data = { "picking_order_item_id": order_item_id, "picked_quantity": picked_quantity }
 
             # Zkontrolujeme, zda musíme přiřadit skladovou kartu
-            if self.order_data['items'][row]['inventory_item'] is None:
+            if order_item['inventory_item'] is None:
                 container_widget = self.items_table.cellWidget(row, 3)
                 widget = container_widget.findChild(QComboBox)
                 inv_item_id = widget.currentData()
                 if inv_item_id == -1:
-                    QMessageBox.warning(self, "Chyba", f"Na řádku {row+1} musíte přiřadit existující skladovou kartu.")
-                    return
-                item_data["inventory_item_id"] = inv_item_id
+                    # Pokud nebylo nic vychystáno (0 ks), není nutné kartu přiřazovat
+                    if picked_quantity > 0:
+                        QMessageBox.warning(self, "Chyba", f"Na řádku {row+1} vychystáváte zboží, musíte přiřadit skladovou kartu.")
+                        return
+                else:
+                    item_data["inventory_item_id"] = inv_item_id
             
             items_payload.append(item_data)
             
@@ -145,7 +155,7 @@ class PickingOrderFulfillDialog(QDialog):
         result = self.api_client.fulfill_picking_order(self.order_data['id'], payload)
         
         if result and "error" not in result:
-            QMessageBox.information(self, "Úspěch", "Požadavek byl úspěšně zpracován a skladové zásoby byly upraveny.")
+            QMessageBox.information(self, "Úspěch", "Požadavek byl úspěšně zpracován.")
             self.accept()
         else:
             error_msg = result.get('error') if isinstance(result, dict) else "Neznámá chyba."
