@@ -3,17 +3,14 @@ from enum import Enum
 from sqlalchemy import (
     String, Integer, ForeignKey, DateTime, Boolean,
     UniqueConstraint, Enum as SAEnum, Text, Float, Date, TIMESTAMP, JSON,
-    # --- PŘIDANÉ IMPORTY ---
     Table, Column
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 
-# --- Pomocná funkce pro výchozí čas v UTC ---
 def now_utc():
     return datetime.now(timezone.utc)
 
-# --- NOVÁ PROPOJOVACÍ TABULKA PRO OPRÁVNĚNÍ ---
 location_permissions = Table(
     "location_permissions",
     Base.metadata,
@@ -21,8 +18,6 @@ location_permissions = Table(
     Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
 )
 
-
-# --- Enumy ---
 class RoleEnum(str, Enum):
     owner = "owner"
     admin = "admin"
@@ -33,10 +28,10 @@ class AuditLogAction(str, Enum):
     updated = "updated"
     deleted = "deleted"
     quantity_adjusted = "quantity_adjusted"
-    # --- NOVÉ AKCE PRO LOKACE ---
     location_placed = "location_placed"
     location_withdrawn = "location_withdrawn"
     location_transferred = "location_transferred"
+    write_off = "write_off"
 
 
 class TimeLogStatus(str, Enum):
@@ -51,7 +46,6 @@ class TimeLogEntryType(str, Enum):
     DOCTOR = "doctor"
     UNPAID_LEAVE = "unpaid_leave"
 
-
 class TriggerType(str, Enum):
     WORK_ORDER_BUDGET = "work_order_budget"
     INVENTORY_LOW_STOCK = "inventory_low_stock"
@@ -60,8 +54,6 @@ class TriggerCondition(str, Enum):
     PERCENTAGE_REACHED = "percentage_reached"
     QUANTITY_BELOW = "quantity_below"
 
-
-# --- Modely ---
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -70,11 +62,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    # --- OPRAVENÝ VZTAH K LOKACÍM ---
     authorized_locations: Mapped[list["Location"]] = relationship(
         secondary=location_permissions,
-        # 'back_populates' je nahrazeno 'backref', které automaticky vytvoří
-        # vlastnost 'authorized_users' na modelu Location.
         backref="authorized_users"
     )
 

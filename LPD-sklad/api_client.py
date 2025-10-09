@@ -50,7 +50,6 @@ class ApiClient:
 
     # --- INVENTORY ITEMS ---
     def get_inventory_items(self, category_id: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
-        """Získá všechny položky skladu, volitelně filtrované podle kategorie."""
         try:
             endpoint = f"/companies/{self.company_id}/inventory?limit=1000"
             if category_id is not None and category_id != -1:
@@ -62,6 +61,7 @@ class ApiClient:
             print(f"Chyba při načítání skladu: {e}")
             return None
 
+    # ... (ostatní metody pro inventory, categories atd. zůstávají stejné) ...
     def find_item_by_ean(self, ean: str) -> Optional[Dict[str, Any]]:
         try:
             endpoint = f"/companies/{self.company_id}/inventory/by-ean/{ean}"
@@ -93,7 +93,6 @@ class ApiClient:
             print(f"Chyba při aktualizaci položky {item_id}: {e}")
             return None
 
-    # --- CATEGORIES ---
     def get_categories(self) -> Optional[List[Dict[str, Any]]]:
         try:
             endpoint = f"/companies/{self.company_id}/categories"
@@ -114,12 +113,30 @@ class ApiClient:
         except requests.exceptions.RequestException as e:
             print(f"Chyba při vytváření kategorie: {e}")
             return None
-    
-    # --- AUDIT LOGS ---
-    def get_audit_logs(self, limit: int = 5000) -> Optional[List[Dict[str, Any]]]:
+
+    # --- AUDIT LOGS (UPRAVENO) ---
+    def get_audit_logs(
+        self, 
+        limit: int = 1000, 
+        item_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Získá historii pohybů s možností filtrování."""
         try:
-            endpoint = f"/companies/{self.company_id}/audit-logs?limit={limit}"
-            response = self._make_request("GET", endpoint)
+            params = {'limit': limit}
+            if item_id is not None and item_id != -1:
+                params['item_id'] = item_id
+            if user_id is not None and user_id != -1:
+                params['user_id'] = user_id
+            if start_date:
+                params['start_date'] = start_date
+            if end_date:
+                params['end_date'] = end_date
+
+            endpoint = f"/companies/{self.company_id}/audit-logs"
+            response = self._make_request("GET", endpoint, params=params)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -128,7 +145,6 @@ class ApiClient:
             
     # --- LOCATIONS ---
     def get_locations(self) -> Optional[List[Dict[str, Any]]]:
-        """Získá seznam všech skladových lokací včetně oprávněných uživatelů."""
         try:
             endpoint = f"/companies/{self.company_id}/locations"
             response = self._make_request("GET", endpoint)
@@ -139,7 +155,6 @@ class ApiClient:
             return None
             
     def create_location(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Vytvoří novou skladovou lokaci."""
         try:
             endpoint = f"/companies/{self.company_id}/locations"
             response = self._make_request("POST", endpoint, json=data)
@@ -150,7 +165,6 @@ class ApiClient:
             return None
             
     def update_location(self, location_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Aktualizuje existující skladovou lokaci."""
         try:
             endpoint = f"/companies/{self.company_id}/locations/{location_id}"
             response = self._make_request("PATCH", endpoint, json=data)
@@ -161,7 +175,6 @@ class ApiClient:
             return None
 
     def delete_location(self, location_id: int) -> bool:
-        """Smaže skladovou lokaci."""
         try:
             endpoint = f"/companies/{self.company_id}/locations/{location_id}"
             response = self._make_request("DELETE", endpoint)
@@ -173,7 +186,6 @@ class ApiClient:
 
     # --- LOCATION PERMISSIONS ---
     def add_location_permission(self, location_id: int, user_email: str) -> Optional[List[Dict[str, Any]]]:
-        """Přidá uživateli oprávnění pro danou lokaci."""
         try:
             endpoint = f"/companies/{self.company_id}/locations/{location_id}/permissions"
             payload = {"user_email": user_email}
@@ -185,7 +197,6 @@ class ApiClient:
             return None
 
     def remove_location_permission(self, location_id: int, user_id: int) -> bool:
-        """Odebere uživateli oprávnění pro danou lokaci."""
         try:
             endpoint = f"/companies/{self.company_id}/locations/{location_id}/permissions/{user_id}"
             response = self._make_request("DELETE", endpoint)
@@ -197,7 +208,6 @@ class ApiClient:
 
     # --- MEMBERS ---
     def get_company_members(self) -> Optional[List[Dict[str, Any]]]:
-        """Získá seznam všech členů (uživatelů) ve firmě."""
         try:
             endpoint = f"/companies/{self.company_id}/members"
             response = self._make_request("GET", endpoint)
@@ -209,7 +219,6 @@ class ApiClient:
 
     # --- MOVEMENTS ---
     def place_stock(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Naskladní položku na lokaci."""
         try:
             endpoint = f"/companies/{self.company_id}/inventory/movements/place"
             response = self._make_request("POST", endpoint, json=data)
@@ -220,7 +229,6 @@ class ApiClient:
             return None
 
     def transfer_stock(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Přesune položku mezi lokacemi."""
         try:
             endpoint = f"/companies/{self.company_id}/inventory/movements/transfer"
             response = self._make_request("POST", endpoint, json=data)
@@ -228,4 +236,14 @@ class ApiClient:
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"Chyba při přesunu: {e}")
+            return None
+            
+    def write_off_stock(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            endpoint = f"/companies/{self.company_id}/inventory/movements/write-off"
+            response = self._make_request("POST", endpoint, json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při odepisování položky: {e}")
             return None

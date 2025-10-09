@@ -9,10 +9,11 @@ import qtawesome as qta
 from styling import MAIN_STYLESHEET
 from .item_dialog import ItemDialog
 from .category_dialog import CategoryDialog
-# --- NOVÉ IMPORTY ---
 from .location_dialog import LocationDialog
 from .movement_dialog import MovementDialog
 from .import_dialog import ImportDialog
+from .write_off_dialog import WriteOffDialog
+from .audit_log_dialog import AuditLogDialog
 from xls_exporter import export_inventory_to_xls, export_audit_logs_to_xls
 
 class MainWindow(QMainWindow):
@@ -30,7 +31,8 @@ class MainWindow(QMainWindow):
         
         self.inventory_data = []
         self.categories_flat = []
-        self.locations = [] # Nový stav pro lokace
+        self.locations = []
+        self.company_members = [] # Stav pro členy firmy
 
         self._setup_ui()
         self.load_initial_data()
@@ -55,21 +57,23 @@ class MainWindow(QMainWindow):
         move_group = QGroupBox("Skladové operace")
         move_layout = QHBoxLayout(move_group)
         self.place_button = QPushButton(qta.icon('fa5s.dolly-flatbed'), " Naskladnit / Přesunout")
+        self.write_off_button = QPushButton(qta.icon('fa5s.trash-alt'), " Odepsat položku")
         self.locations_button = QPushButton(qta.icon('fa5s.map-marker-alt'), " Správa lokací")
         self.categories_button = QPushButton(qta.icon('fa5s.sitemap'), " Správa kategorií")
         move_layout.addWidget(self.place_button)
+        move_layout.addWidget(self.write_off_button)
         move_layout.addWidget(self.locations_button)
         move_layout.addWidget(self.categories_button)
 
         # Skupina pro exporty
-        io_group = QGroupBox("Import / Export")
+        io_group = QGroupBox("Import / Export / Audit")
         io_layout = QHBoxLayout(io_group)
         self.import_xls_button = QPushButton(qta.icon('fa5s.file-upload'), " Import z XLS")
+        self.audit_log_button = QPushButton(qta.icon('fa5s.history'), " Historie pohybů")
         self.export_inventory_button = QPushButton(qta.icon('fa5s.file-excel'), " Export inventury")
-        self.export_movements_button = QPushButton(qta.icon('fa5s.file-excel'), " Export pohybů")
         io_layout.addWidget(self.import_xls_button)
+        io_layout.addWidget(self.audit_log_button)
         io_layout.addWidget(self.export_inventory_button)
-        io_layout.addWidget(self.export_movements_button)
 
         top_layout.addWidget(data_group)
         top_layout.addWidget(move_group)
@@ -133,6 +137,8 @@ class MainWindow(QMainWindow):
         self.categories_button.clicked.connect(self.manage_categories)
         self.locations_button.clicked.connect(self.manage_locations)
         self.place_button.clicked.connect(self.manage_movements)
+        self.write_off_button.clicked.connect(self.open_write_off_dialog)
+        self.audit_log_button.clicked.connect(self.show_audit_logs)
         
         self.search_input.textChanged.connect(self.filter_table_by_text)
         self.category_filter_combo.currentIndexChanged.connect(self.load_inventory_data)
@@ -140,13 +146,19 @@ class MainWindow(QMainWindow):
         
         self.import_xls_button.clicked.connect(self.import_from_xls)
         self.export_inventory_button.clicked.connect(self.export_inventory_xls)
-        self.export_movements_button.clicked.connect(self.export_movements_xls)
 
     def load_initial_data(self):
         self.statusBar().showMessage("Načítám data z API...")
+        self.load_company_members()
         self.load_categories()
         self.load_locations()
         self.load_inventory_data()
+
+    def load_company_members(self):
+        self.company_members = self.api_client.get_company_members()
+        if self.company_members is None:
+            self.company_members = []
+            QMessageBox.warning(self, "Varování", "Nepodařilo se načíst seznam uživatelů. Filtrování v historii nemusí fungovat správně.")
 
     def load_locations(self):
         self.locations = self.api_client.get_locations()
@@ -188,7 +200,6 @@ class MainWindow(QMainWindow):
             price = item.get('price')
             price_str = f"{price:.2f} Kč" if price is not None else "N/A"
             
-            # --- ZMĚNA: Používáme 'total_quantity' ---
             quantity_item = QTableWidgetItem(str(item['total_quantity']))
             quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             price_item = QTableWidgetItem(price_str)
@@ -235,21 +246,44 @@ class MainWindow(QMainWindow):
             self.table.setRowHidden(row, not text_match)
 
     def handle_ean_scan(self):
-        # ... (beze změny)
         pass
 
     def manage_categories(self):
         dialog = CategoryDialog(self.api_client, self)
-        if dialog.exec(): self.load_categories()
+        if dialog.exec(): 
+            self.load_categories()
 
     def manage_locations(self):
         dialog = LocationDialog(self.api_client, self)
-        if dialog.exec(): self.load_locations()
+        if dialog.exec(): 
+            self.load_initial_data() # Znovu načteme vše, mohla se změnit oprávnění atd.
         
     def manage_movements(self):
         dialog = MovementDialog(self.api_client, self.inventory_data, self.locations, self)
         if dialog.exec():
             self.load_inventory_data()
+
+    def open_write_off_dialog(self):
+        selected_rows = self.table.selectionModel().selectedRows()
+        selected_item_id = None
+        if selected_rows:
+            item_id_str = self.table.item(selected_rows[0].row(), 0).text()
+            selected_item_id = int(item_id_str)
+
+        items_with_stock = [item for item in self.inventory_data if item.get('total_quantity', 0) > 0]
+        if not items_with_stock:
+             QMessageBox.warning(self, "Info", "Žádné položky nejsou naskladněny, nelze nic odepsat.")
+             return
+
+        dialog = WriteOffDialog(self.api_client, items_with_stock, self, selected_item_id=selected_item_id)
+        if dialog.exec():
+            self.statusBar().showMessage("Položka úspěšně odepsána.", 5000)
+            self.load_inventory_data()
+            
+    def show_audit_logs(self):
+        """Otevře dialogové okno s historií pohybů."""
+        dialog = AuditLogDialog(self.api_client, self.inventory_data, self.company_members, self)
+        dialog.exec()
 
     def edit_selected_item(self):
         selected_rows = self.table.selectionModel().selectedRows()
@@ -271,31 +305,14 @@ class MainWindow(QMainWindow):
     def import_from_xls(self):
         dialog = ImportDialog(self.api_client, self)
         if dialog.exec():
-            # exec() bude true, pokud uživatel zavře okno po úspěšném importu
             self.statusBar().showMessage("Import dokončen. Obnovuji data...", 5000)
             self.load_initial_data()
-        else:
-            # Uživatel zrušil nebo jen zavřel okno
-            self.statusBar().showMessage("Import zrušen.", 5000)
     
     def export_inventory_xls(self):
-        # ... (beze změny)
         path, _ = QFileDialog.getSaveFileName(self, "Uložit inventuru jako...", "inventura.xlsx", "Excel soubory (*.xlsx)")
         if not path: return
         try:
             export_inventory_to_xls(self.inventory_data, path)
             QMessageBox.information(self, "Export úspěšný", f"Inventura byla uložena do souboru:\n{path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Chyba exportu", f"Nastala chyba: {e}")
-
-    def export_movements_xls(self):
-        # ... (beze změny)
-        path, _ = QFileDialog.getSaveFileName(self, "Uložit pohyby jako...", "pohyby_skladu.xlsx", "Excel soubory (*.xlsx)")
-        if not path: return
-        audit_logs = self.api_client.get_audit_logs()
-        if audit_logs is None: return
-        try:
-            export_audit_logs_to_xls(audit_logs, path)
-            QMessageBox.information(self, "Export úspěšný", f"Historie pohybů byla uložena do souboru:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Chyba exportu", f"Nastala chyba: {e}")

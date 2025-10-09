@@ -85,7 +85,7 @@ async def copy_work_order(company_id: int, work_order_id: int, db: AsyncSession 
 async def get_billing_report(
     company_id: int, work_order_id: int,
     start_date: Optional[date] = None, end_date: Optional[date] = None,
-    db: AsyncSession = Depends(get_db), _=Depends(require_admin_access)
+    db: AsyncSession = Depends(get_db)
 ):
     wo = await get_full_work_order_or_404(company_id, work_order_id, db)
     
