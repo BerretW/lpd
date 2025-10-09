@@ -41,6 +41,13 @@ class UsedItemCreateIn(BaseModel):
     # --- NOVÉ POLE ---
     from_location_id: Optional[int] = None
 
+# --- NOVÉ SCHÉMA PRO PŘÍMÉ PŘIŘAZENÍ ---
+class DirectAssignItemIn(BaseModel):
+    inventory_item_id: int
+    quantity: int
+    details: Optional[str] = None
+
+
 class TaskOut(TaskBase):
     id: int
     status: str

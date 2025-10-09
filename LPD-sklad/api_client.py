@@ -126,9 +126,9 @@ class ApiClient:
             print(f"Chyba při načítání auditních logů: {e}")
             return None
             
-    # --- LOCATIONS (NOVÉ) ---
+    # --- LOCATIONS ---
     def get_locations(self) -> Optional[List[Dict[str, Any]]]:
-        """Získá seznam všech skladových lokací."""
+        """Získá seznam všech skladových lokací včetně oprávněných uživatelů."""
         try:
             endpoint = f"/companies/{self.company_id}/locations"
             response = self._make_request("GET", endpoint)
@@ -149,7 +149,65 @@ class ApiClient:
             print(f"Chyba při vytváření lokace: {e}")
             return None
             
-    # --- MOVEMENTS (NOVÉ) ---
+    def update_location(self, location_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Aktualizuje existující skladovou lokaci."""
+        try:
+            endpoint = f"/companies/{self.company_id}/locations/{location_id}"
+            response = self._make_request("PATCH", endpoint, json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při aktualizaci lokace {location_id}: {e}")
+            return None
+
+    def delete_location(self, location_id: int) -> bool:
+        """Smaže skladovou lokaci."""
+        try:
+            endpoint = f"/companies/{self.company_id}/locations/{location_id}"
+            response = self._make_request("DELETE", endpoint)
+            response.raise_for_status()
+            return response.status_code == 204
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při mazání lokace {location_id}: {e}")
+            return False
+
+    # --- LOCATION PERMISSIONS ---
+    def add_location_permission(self, location_id: int, user_email: str) -> Optional[List[Dict[str, Any]]]:
+        """Přidá uživateli oprávnění pro danou lokaci."""
+        try:
+            endpoint = f"/companies/{self.company_id}/locations/{location_id}/permissions"
+            payload = {"user_email": user_email}
+            response = self._make_request("POST", endpoint, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při přidávání oprávnění: {e}")
+            return None
+
+    def remove_location_permission(self, location_id: int, user_id: int) -> bool:
+        """Odebere uživateli oprávnění pro danou lokaci."""
+        try:
+            endpoint = f"/companies/{self.company_id}/locations/{location_id}/permissions/{user_id}"
+            response = self._make_request("DELETE", endpoint)
+            response.raise_for_status()
+            return response.status_code == 204
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při odebírání oprávnění: {e}")
+            return False
+
+    # --- MEMBERS ---
+    def get_company_members(self) -> Optional[List[Dict[str, Any]]]:
+        """Získá seznam všech členů (uživatelů) ve firmě."""
+        try:
+            endpoint = f"/companies/{self.company_id}/members"
+            response = self._make_request("GET", endpoint)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při načítání členů firmy: {e}")
+            return None
+
+    # --- MOVEMENTS ---
     def place_stock(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Naskladní položku na lokaci."""
         try:

@@ -14,7 +14,7 @@ from app.db.models import (
 from app.schemas.task import (
     TaskCreateIn, TaskOut, UsedItemCreateIn, TaskUpdateIn,
     TaskAssignIn, UsedItemUpdateIn, AssignedTaskOut,
-    TaskTotalHoursOut
+    TaskTotalHoursOut, DirectAssignItemIn
 )
 # --- OPRAVENÝ IMPORT ZDE ---
 # TimeLogOut se importuje ze svého vlastního souboru, ne z task.py
@@ -172,6 +172,61 @@ async def use_inventory_for_task(
     await db.commit()
     return await get_full_task_or_404(work_order_id, task_id, db)
 
+# --- NOVÝ ENDPOINT ---
+@router.post(
+    "/{task_id}/inventory/direct-assign",
+    response_model=TaskOut,
+    summary="Naskladnění a okamžité vyskladnění materiálu přímo na úkol"
+)
+async def direct_assign_inventory_to_task(
+    company_id: int,
+    work_order_id: int,
+    task_id: int,
+    payload: DirectAssignItemIn,
+    db: AsyncSession = Depends(get_db),
+    token: Dict[str, Any] = Depends(require_company_access)
+):
+    """
+    Tato operace simuluje naskladnění a okamžité vyskladnění materiálu,
+    který přišel rovnou na stavbu (k zakázce), aniž by prošel skladem.
+    Vytvoří auditní záznam o příjmu a rovnou materiál zapíše jako spotřebovaný k úkolu.
+    Celkový stav na skladech se nemění.
+    """
+    await get_full_task_or_404(work_order_id, task_id, db)
+    
+    item = await db.get(InventoryItem, payload.inventory_item_id)
+    if not item or item.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found in this company.")
+
+    user_id = int(token.get("sub"))
+
+    # 1. Vytvoříme auditní záznam (simulace "naskladnění")
+    log_details = (
+        f"Přímý příjem {payload.quantity} ks položky '{item.name}' (SKU: {item.sku}) "
+        f"a okamžité přiřazení k úkolu ID: {task_id}. {payload.details or ''}".strip()
+    )
+    audit_log = InventoryAuditLog(
+        item_id=item.id,
+        user_id=user_id,
+        company_id=company_id,
+        action=AuditLogAction.quantity_adjusted, # Použijeme obecnou akci
+        details=log_details
+    )
+    db.add(audit_log)
+
+    # 2. Vytvoříme záznam o spotřebě (simulace "vyskladnění")
+    used_item = UsedInventoryItem(
+        task_id=task_id,
+        inventory_item_id=payload.inventory_item_id,
+        quantity=payload.quantity,
+        from_location_id=None # Důležité: materiál nejde z žádné lokace
+    )
+    db.add(used_item)
+    
+    await db.commit()
+    
+    return await get_full_task_or_404(work_order_id, task_id, db)
+
 
 @router.get(
     "/{task_id}/total-hours",
@@ -204,8 +259,6 @@ async def get_task_total_hours(
 
     result_from_db = (await db.execute(stmt)).scalar_one_or_none()
     
-    # --- OPRAVA ZDE ---
-    # Explicitně převedeme výsledek (který může být Decimal nebo None) na float
     total_seconds = float(result_from_db or 0)
     
     total_hours = round(total_seconds / 3600.0, 2)
@@ -236,7 +289,6 @@ async def get_task_time_logs(
         .options(
             selectinload(TimeLog.user),
             selectinload(TimeLog.work_type),
-            # --- OPRAVA ZDE: Přidáme eager loading pro úkol ---
             selectinload(TimeLog.task) 
         )
         .order_by(TimeLog.start_time.asc())
@@ -366,7 +418,7 @@ async def update_used_inventory_quantity(
     if used_item_record.from_location_id:
         stock_record = await db.get(ItemLocationStock, (used_item_record.inventory_item_id, used_item_record.from_location_id))
         if not stock_record:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Source stock location no longer exists.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source stock location no longer exists.")
 
         # Zvyšujeme spotřebu -> bereme více ze skladu
         if quantity_diff > 0:
