@@ -5,6 +5,18 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QMe
 from PyQt6.QtCore import QDate, QDateTime, Qt
 from xls_exporter import export_audit_logs_to_xls
 
+# Slovník pro převod technických názvů akcí na čitelné
+ACTION_MAP = {
+    "Všechny akce": None,
+    "Vytvoření položky": "created",
+    "Úprava položky": "updated",
+    "Naskladnění": "location_placed",
+    "Přesun": "location_transferred",
+    "Vyskladnění (použití)": "location_withdrawn",
+    "Odpis": "write_off",
+    "Smazání položky": "deleted",
+}
+
 class AuditLogDialog(QDialog):
     def __init__(self, api_client, inventory_data, company_members, parent=None):
         super().__init__(parent)
@@ -14,7 +26,7 @@ class AuditLogDialog(QDialog):
         self.audit_logs = []
 
         self.setWindowTitle("Historie skladových pohybů (Audit Log)")
-        self.setMinimumSize(1000, 700)
+        self.setMinimumSize(1100, 700)
 
         # --- Layout ---
         self.layout = QVBoxLayout(self)
@@ -26,12 +38,17 @@ class AuditLogDialog(QDialog):
         # Filtr položky
         filter_layout.addWidget(QLabel("Položka:"))
         self.item_filter = QComboBox()
-        filter_layout.addWidget(self.item_filter)
+        filter_layout.addWidget(self.item_filter, 1) # Přidán stretch factor
         
         # Filtr uživatele
         filter_layout.addWidget(QLabel("Uživatel:"))
         self.user_filter = QComboBox()
-        filter_layout.addWidget(self.user_filter)
+        filter_layout.addWidget(self.user_filter, 1)
+
+        # Filtr akce
+        filter_layout.addWidget(QLabel("Typ akce:"))
+        self.action_filter = QComboBox()
+        filter_layout.addWidget(self.action_filter, 1)
 
         # Filtr data
         self.date_from = QDateEdit()
@@ -40,12 +57,17 @@ class AuditLogDialog(QDialog):
         self.date_to = QDateEdit()
         self.date_to.setCalendarPopup(True)
         self.date_to.setDate(QDate.currentDate())
-        filter_layout.addWidget(QLabel("Od:"))
-        filter_layout.addWidget(self.date_from)
-        filter_layout.addWidget(QLabel("Do:"))
-        filter_layout.addWidget(self.date_to)
+        date_layout = QHBoxLayout()
+        date_layout.addWidget(QLabel("Od:"))
+        date_layout.addWidget(self.date_from)
+        date_layout.addWidget(QLabel("Do:"))
+        date_layout.addWidget(self.date_to)
         
         self.filter_button = QPushButton("Filtrovat")
+        
+        # Seskupení filtrů pro lepší zobrazení
+        filter_layout.addLayout(date_layout)
+        filter_layout.addSpacing(20)
         filter_layout.addWidget(self.filter_button)
         filter_layout.addStretch()
         
@@ -87,10 +109,15 @@ class AuditLogDialog(QDialog):
         for member in sorted(self.company_members, key=lambda x: x['user']['email']):
             user = member['user']
             self.user_filter.addItem(user['email'], user['id'])
+            
+        # Akce
+        for display_name, technical_name in ACTION_MAP.items():
+            self.action_filter.addItem(display_name, technical_name)
 
     def load_data(self):
         item_id = self.item_filter.currentData()
         user_id = self.user_filter.currentData()
+        action = self.action_filter.currentData()
         start_date = self.date_from.date().toString("yyyy-MM-dd")
         end_date = self.date_to.date().toString("yyyy-MM-dd")
         
@@ -100,9 +127,10 @@ class AuditLogDialog(QDialog):
         self.audit_logs = self.api_client.get_audit_logs(
             item_id=item_id,
             user_id=user_id,
+            action=action,
             start_date=start_date,
             end_date=end_date,
-            limit=5000 # Omezíme na rozumný počet pro zobrazení
+            limit=5000
         )
         
         self.filter_button.setEnabled(True)
@@ -118,17 +146,22 @@ class AuditLogDialog(QDialog):
         self.table.setRowCount(0)
         self.table.setRowCount(len(self.audit_logs))
 
+        # Mapování technických názvů zpět na čitelné pro zobrazení
+        reverse_action_map = {v: k for k, v in ACTION_MAP.items()}
+
         for row, log in enumerate(self.audit_logs):
-            # Formátování data
             dt = QDateTime.fromString(log['timestamp'], Qt.DateFormat.ISODate)
             dt_str = dt.toLocalTime().toString("dd.MM.yyyy HH:mm:ss")
+            
+            action_key = log.get('action')
+            action_display = reverse_action_map.get(action_key, action_key) # Zobrazí hezký název, nebo technický, když nenajde
             
             user_email = log.get('user', {}).get('email', 'N/A')
             item_sku = log.get('inventory_item', {}).get('sku', 'N/A')
             item_name = log.get('inventory_item', {}).get('name', 'Smazaná položka')
 
             self.table.setItem(row, 0, QTableWidgetItem(dt_str))
-            self.table.setItem(row, 1, QTableWidgetItem(log.get('action', '')))
+            self.table.setItem(row, 1, QTableWidgetItem(action_display))
             self.table.setItem(row, 2, QTableWidgetItem(user_email))
             self.table.setItem(row, 3, QTableWidgetItem(item_sku))
             self.table.setItem(row, 4, QTableWidgetItem(item_name))
@@ -147,7 +180,14 @@ class AuditLogDialog(QDialog):
             return
         
         try:
-            export_audit_logs_to_xls(self.audit_logs, path)
+            # Před exportem můžeme vylepšit data o čitelné názvy akcí
+            export_data = self.audit_logs.copy()
+            reverse_action_map = {v: k for k, v in ACTION_MAP.items()}
+            for log in export_data:
+                action_key = log.get('action')
+                log['action'] = reverse_action_map.get(action_key, action_key)
+
+            export_audit_logs_to_xls(export_data, path)
             QMessageBox.information(self, "Úspěch", f"Historie byla úspěšně uložena do souboru:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Chyba exportu", f"Při exportu nastala chyba: {e}")

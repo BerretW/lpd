@@ -61,7 +61,6 @@ class ApiClient:
             print(f"Chyba při načítání skladu: {e}")
             return None
 
-    # ... (ostatní metody pro inventory, categories atd. zůstávají stejné) ...
     def find_item_by_ean(self, ean: str) -> Optional[Dict[str, Any]]:
         try:
             endpoint = f"/companies/{self.company_id}/inventory/by-ean/{ean}"
@@ -93,6 +92,7 @@ class ApiClient:
             print(f"Chyba při aktualizaci položky {item_id}: {e}")
             return None
 
+    # --- CATEGORIES ---
     def get_categories(self) -> Optional[List[Dict[str, Any]]]:
         try:
             endpoint = f"/companies/{self.company_id}/categories"
@@ -113,13 +113,14 @@ class ApiClient:
         except requests.exceptions.RequestException as e:
             print(f"Chyba při vytváření kategorie: {e}")
             return None
-
-    # --- AUDIT LOGS (UPRAVENO) ---
+    
+    # --- AUDIT LOGS ---
     def get_audit_logs(
         self, 
         limit: int = 1000, 
         item_id: Optional[int] = None,
         user_id: Optional[int] = None,
+        action: Optional[str] = None, # NOVÝ PARAMETR
         start_date: Optional[str] = None,
         end_date: Optional[str] = None
     ) -> Optional[List[Dict[str, Any]]]:
@@ -130,6 +131,8 @@ class ApiClient:
                 params['item_id'] = item_id
             if user_id is not None and user_id != -1:
                 params['user_id'] = user_id
+            if action: # NOVÁ PODMÍNKA
+                params['action'] = action
             if start_date:
                 params['start_date'] = start_date
             if end_date:
