@@ -1,5 +1,5 @@
 # app/routers/categories.py
-from typing import List
+from typing import List, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -26,6 +26,7 @@ async def create_category(
     await db.refresh(category, attribute_names=['children'])
     return category
 
+# !!! ZDE JE OPRAVA - ODSTRANĚN DUPLICITNÍ DEKORÁTOR A ZMĚNA V LOGICE !!!
 @router.get("", response_model=List[CategoryOut])
 async def list_categories(
     company_id: int,
@@ -33,19 +34,39 @@ async def list_categories(
     _=Depends(require_company_access)
 ):
     """Vrátí stromovou strukturu všech kategorií pro danou firmu."""
-    stmt = (
-        select(InventoryCategory)
-        .where(InventoryCategory.company_id == company_id, InventoryCategory.parent_id == None)
-        # --- OPRAVA ZDE: Prohloubení rekurzivního načítání na 4 úrovně ---
-        .options(
-            selectinload(InventoryCategory.children)
-            .selectinload(InventoryCategory.children)
-            .selectinload(InventoryCategory.children)
-            .selectinload(InventoryCategory.children)
-        )
-    )
+    stmt = select(InventoryCategory).where(InventoryCategory.company_id == company_id)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    all_categories_db = result.scalars().all()
+
+    if not all_categories_db:
+        return []
+
+    # Vytvoříme Pydantic modely, ale explicitně definujeme, které atributy se mají použít,
+    # abychom se vyhnuli přístupu k 'children' relationship.
+    category_out_map: Dict[int, CategoryOut] = {}
+    for category in all_categories_db:
+        # Vytvoříme slovník jen s bezpečnými atributy
+        safe_data = {
+            "id": category.id,
+            "name": category.name,
+            "parent_id": category.parent_id
+            # Atribut 'children' záměrně vynecháváme, Pydantic použije defaultní hodnotu []
+        }
+        category_out_map[category.id] = CategoryOut.model_validate(safe_data)
+
+    # Zbytek kódu pro sestavení stromu je již v pořádku a zůstává stejný
+    root_categories_out: List[CategoryOut] = []
+    for category_db in all_categories_db:
+        category_out = category_out_map[category_db.id]
+        
+        if category_db.parent_id is not None:
+            parent_out = category_out_map.get(category_db.parent_id)
+            if parent_out:
+                parent_out.children.append(category_out)
+        else:
+            root_categories_out.append(category_out)
+
+    return root_categories_out
 
 @router.patch("/{category_id}", response_model=CategoryOut)
 async def update_category(

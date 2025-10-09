@@ -52,11 +52,12 @@ async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryIt
         select(InventoryItem)
         .where(InventoryItem.id == item_id)
         .options(
-            # --- OPRAVA ZDE: Hloubkové načtení rekurzivních dětí kategorie ---
+            # --- ZVÝŠENÁ HLOUBKA NAČÍTÁNÍ ---
             selectinload(InventoryItem.category)
                 .selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children),
-            # --- Načítání lokací zůstává ---
             selectinload(InventoryItem.locations).selectinload(ItemLocationStock.location)
         )
     )
@@ -82,8 +83,10 @@ async def list_inventory_items(
         select(InventoryItem)
         .where(InventoryItem.company_id == company_id)
         .options(
-            # --- PREVENTIVNÍ OPRAVA I ZDE ---
+            # --- ZVÝŠENÁ HLOUBKA I ZDE ---
             selectinload(InventoryItem.category)
+                .selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children),
             selectinload(InventoryItem.locations).selectinload(ItemLocationStock.location)
