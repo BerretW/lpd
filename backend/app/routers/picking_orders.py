@@ -153,39 +153,72 @@ async def fulfill_picking_order(
     db: AsyncSession = Depends(get_db),
     token: Dict[str, Any] = Depends(require_company_access)
 ):
-    # ... (beze změny)
+    """
+    Splní požadavek na materiál. Rozlišuje mezi přesunem a pořízením.
+    - Pokud má požadavek zdrojovou lokaci, provede přesun (výdej -> příjem).
+    - Pokud nemá zdrojovou lokaci, provede pouze naskladnění na cílovou lokaci.
+    """
     order = await get_picking_order_or_404(db, company_id, order_id)
     if order.status not in [PickingOrderStatus.NEW, PickingOrderStatus.IN_PROGRESS]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Order is already completed or cancelled.")
+
     user_id = int(token.get("sub"))
+
     for item_in in payload.items:
         db_item = next((i for i in order.items if i.id == item_in.picking_order_item_id), None)
         if not db_item:
             raise HTTPException(404, f"Item with id {item_in.picking_order_item_id} not found in this order.")
+
         if db_item.requested_item_description and not item_in.inventory_item_id:
             raise HTTPException(400, f"Item '{db_item.requested_item_description}' was requested by description, you must provide a real inventory_item_id upon fulfillment.")
+        
         final_item_id = item_in.inventory_item_id or db_item.inventory_item_id
+        if not final_item_id: continue # Should not happen due to validation above
+
         db_item.inventory_item_id = final_item_id
         db_item.picked_quantity = item_in.picked_quantity
+
         if item_in.picked_quantity == 0:
             continue
-        source_stock = await db.get(ItemLocationStock, (final_item_id, order.source_location_id))
-        if not source_stock or source_stock.quantity < item_in.picked_quantity:
-            raise HTTPException(400, f"Not enough stock for item ID {final_item_id} at source location.")
-        source_stock.quantity -= item_in.picked_quantity
+
+        log_details = ""
+        log_action: AuditLogAction
+
+        # --- PŘEPRACOVANÁ LOGIKA ZDE ---
+
+        # Případ 1: Přesun mezi sklady (standardní chování)
+        if order.source_location_id:
+            source_stock = await db.get(ItemLocationStock, (final_item_id, order.source_location_id))
+            if not source_stock or source_stock.quantity < item_in.picked_quantity:
+                raise HTTPException(400, f"Not enough stock for item ID {final_item_id} at source location.")
+            source_stock.quantity -= item_in.picked_quantity
+            
+            log_details = f"Splněn požadavek #{order.id}: {item_in.picked_quantity} ks přesunuto z '{order.source_location.name}' do '{order.destination_location.name}'."
+            log_action = AuditLogAction.picking_fulfilled
+        
+        # Případ 2: Pořízení nového materiálu (bez zdrojového skladu)
+        else:
+            log_details = f"Splněn požadavek na pořízení #{order.id}: {item_in.picked_quantity} ks naskladněno do '{order.destination_location.name}'."
+            log_action = AuditLogAction.location_placed
+
+        # Společná logika pro příjem na cílovou lokaci
         dest_stock = await db.get(ItemLocationStock, (final_item_id, order.destination_location_id))
         if dest_stock:
             dest_stock.quantity += item_in.picked_quantity
         else:
             dest_stock = ItemLocationStock(inventory_item_id=final_item_id, location_id=order.destination_location_id, quantity=item_in.picked_quantity)
             db.add(dest_stock)
+
+        # Společná logika pro auditní záznam
         log = InventoryAuditLog(
             item_id=final_item_id, user_id=user_id, company_id=company_id,
-            action=AuditLogAction.picking_fulfilled,
-            details=f"Splněn požadavek #{order.id}: {item_in.picked_quantity} ks přesunuto z '{order.source_location.name}' do '{order.destination_location.name}'."
+            action=log_action,
+            details=log_details
         )
         db.add(log)
+
     order.status = PickingOrderStatus.COMPLETED
     order.completed_at = datetime.now(timezone.utc)
+    
     await db.commit()
     return await get_picking_order_or_404(db, company_id, order.id)

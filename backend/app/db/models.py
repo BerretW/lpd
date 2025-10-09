@@ -7,6 +7,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
+# --- PŘIDANÝ IMPORT ---
+from typing import Optional
 
 def now_utc():
     return datetime.now(timezone.utc)
@@ -34,7 +36,6 @@ class AuditLogAction(str, Enum):
     write_off = "write_off"
     picking_fulfilled = "picking_fulfilled"
 
-
 class TimeLogStatus(str, Enum):
     pending = "pending"
     approved = "approved"
@@ -61,6 +62,7 @@ class PickingOrderStatus(str, Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -79,15 +81,15 @@ class Company(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    logo_url: Mapped[str | None] = mapped_column(String(512))
+    logo_url: Mapped[Optional[str]] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
-    legal_name: Mapped[str | None] = mapped_column(String(255))
-    address: Mapped[str | None] = mapped_column(Text)
-    ico: Mapped[str | None] = mapped_column(String(20), index=True)
-    dic: Mapped[str | None] = mapped_column(String(20), index=True)
-    executive: Mapped[str | None] = mapped_column(String(255))
-    bank_account: Mapped[str | None] = mapped_column(String(50))
-    iban: Mapped[str | None] = mapped_column(String(50))
+    legal_name: Mapped[Optional[str]] = mapped_column(String(255))
+    address: Mapped[Optional[str]] = mapped_column(Text)
+    ico: Mapped[Optional[str]] = mapped_column(String(20), index=True)
+    dic: Mapped[Optional[str]] = mapped_column(String(20), index=True)
+    executive: Mapped[Optional[str]] = mapped_column(String(255))
+    bank_account: Mapped[Optional[str]] = mapped_column(String(50))
+    iban: Mapped[Optional[str]] = mapped_column(String(50))
     members: Mapped[list["Membership"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     smtp_settings: Mapped["CompanySmtpSettings"] = relationship(back_populates="company", cascade="all, delete-orphan")
 
@@ -108,7 +110,7 @@ class Invite(Base):
     role: Mapped[RoleEnum] = mapped_column(SAEnum(RoleEnum), default=RoleEnum.member)
     token: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
-    accepted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     __table_args__ = (UniqueConstraint("company_id", "email", name="uq_invite_company_email"),)
 
@@ -117,14 +119,14 @@ class Client(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
-    email: Mapped[str | None] = mapped_column(String(255))
-    phone: Mapped[str | None] = mapped_column(String(50))
-    address: Mapped[str | None] = mapped_column(Text)
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    phone: Mapped[Optional[str]] = mapped_column(String(50))
+    address: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
-    legal_name: Mapped[str | None] = mapped_column(String(255))
-    contact_person: Mapped[str | None] = mapped_column(String(255))
-    ico: Mapped[str | None] = mapped_column(String(20), index=True)
-    dic: Mapped[str | None] = mapped_column(String(20), index=True)
+    legal_name: Mapped[Optional[str]] = mapped_column(String(255))
+    contact_person: Mapped[Optional[str]] = mapped_column(String(255))
+    ico: Mapped[Optional[str]] = mapped_column(String(20), index=True)
+    dic: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_client_company_name"),)
 
 class InventoryCategory(Base):
@@ -132,7 +134,7 @@ class InventoryCategory(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    parent_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_categories.id"))
+    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_categories.id"))
     parent: Mapped["InventoryCategory"] = relationship(remote_side=[id], back_populates="children")
     children: Mapped[list["InventoryCategory"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
     __table_args__ = (UniqueConstraint("company_id", "name", "parent_id", name="uq_category_company_name_parent"),)
@@ -141,16 +143,16 @@ class InventoryItem(Base):
     __tablename__ = "inventory_items"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_categories.id", ondelete="SET NULL"), index=True)
+    category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_categories.id", ondelete="SET NULL"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     sku: Mapped[str] = mapped_column(String(100), index=True)
-    ean: Mapped[str | None] = mapped_column(String(13), index=True)
-    image_url: Mapped[str | None] = mapped_column(String(512))
-    price: Mapped[float | None] = mapped_column(Float)
-    vat_rate: Mapped[float | None] = mapped_column(Float)
-    description: Mapped[str | None] = mapped_column(Text)
+    ean: Mapped[Optional[str]] = mapped_column(String(13), index=True)
+    image_url: Mapped[Optional[str]] = mapped_column(String(512))
+    price: Mapped[Optional[float]] = mapped_column(Float)
+    vat_rate: Mapped[Optional[float]] = mapped_column(Float)
+    description: Mapped[Optional[str]] = mapped_column(Text)
     is_monitored_for_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
-    low_stock_threshold: Mapped[int | None] = mapped_column(Integer)
+    low_stock_threshold: Mapped[Optional[int]] = mapped_column(Integer)
     low_stock_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, onupdate=now_utc)
@@ -163,9 +165,7 @@ class Location(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
-    description: Mapped[str | None] = mapped_column(Text)
-    # Vlastnost `authorized_users` bude automaticky vytvořena pomocí `backref`
-    # z modelu User.
+    description: Mapped[Optional[str]] = mapped_column(Text)
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_location_company_name"),)
 
 class ItemLocationStock(Base):
@@ -179,11 +179,11 @@ class ItemLocationStock(Base):
 class InventoryAuditLog(Base):
     __tablename__ = "inventory_audit_logs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    item_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_items.id", ondelete="SET NULL"))
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_items.id", ondelete="SET NULL"))
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     action: Mapped[AuditLogAction] = mapped_column(SAEnum(AuditLogAction))
-    details: Mapped[str | None] = mapped_column(Text)
+    details: Mapped[Optional[str]] = mapped_column(Text)
     timestamp: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, index=True)
     user: Mapped["User"] = relationship()
     inventory_item: Mapped["InventoryItem"] = relationship()
@@ -200,11 +200,11 @@ class WorkOrder(Base):
     __tablename__ = "work_orders"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), index=True)
+    client_id: Mapped[Optional[int]] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), index=True)
     name: Mapped[str] = mapped_column(String(255))
-    description: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(50), default="new", index=True)
-    budget_hours: Mapped[float | None] = mapped_column(Float)
+    budget_hours: Mapped[Optional[float]] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     budget_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     tasks: Mapped[list["Task"]] = relationship(back_populates="work_order", cascade="all, delete-orphan")
@@ -214,9 +214,9 @@ class Task(Base):
     __tablename__ = "tasks"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     work_order_id: Mapped[int] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"), index=True)
-    assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    assignee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(255))
-    description: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(50), default="todo", index=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     work_order: Mapped["WorkOrder"] = relationship(back_populates="tasks")
@@ -230,13 +230,13 @@ class TimeLog(Base):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     entry_type: Mapped[TimeLogEntryType] = mapped_column(SAEnum(TimeLogEntryType), default=TimeLogEntryType.WORK)
-    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
-    work_type_id: Mapped[int | None] = mapped_column(ForeignKey("work_types.id"))
+    task_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    work_type_id: Mapped[Optional[int]] = mapped_column(ForeignKey("work_types.id"))
     start_time: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), index=True)
     end_time: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
     break_duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
     is_overtime: Mapped[bool] = mapped_column(Boolean, default=False)
-    notes: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[TimeLogStatus] = mapped_column(SAEnum(TimeLogStatus), default=TimeLogStatus.pending, index=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     user: Mapped["User"] = relationship()
@@ -250,11 +250,10 @@ class UsedInventoryItem(Base):
     inventory_item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id"), index=True)
     quantity: Mapped[int] = mapped_column(Integer)
     log_date: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
-    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"))
+    from_location_id: Mapped[Optional[int]] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"))
     inventory_item: Mapped["InventoryItem"] = relationship()
     task: Mapped["Task"] = relationship(back_populates="used_items")
     from_location: Mapped["Location"] = relationship()
-
 
 class SecurityProtocolEnum(str, Enum):
     NONE = "none"
@@ -268,12 +267,10 @@ class CompanySmtpSettings(Base):
     smtp_host: Mapped[str] = mapped_column(String(255))
     smtp_port: Mapped[int] = mapped_column(Integer)
     smtp_user: Mapped[str] = mapped_column(String(255))
-    encrypted_password: Mapped[str] = mapped_column(String(512)) # Šifrované heslo
+    encrypted_password: Mapped[str] = mapped_column(String(512))
     sender_email: Mapped[str] = mapped_column(String(255))
     security_protocol: Mapped[SecurityProtocolEnum] = mapped_column(SAEnum(SecurityProtocolEnum), default=SecurityProtocolEnum.TLS)
-    
     notification_settings: Mapped[dict] = mapped_column(JSON, default=lambda: {})
-    
     company: Mapped["Company"] = relationship(back_populates="smtp_settings")
     
 class NotificationTrigger(Base):
@@ -281,52 +278,37 @@ class NotificationTrigger(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    
     trigger_type: Mapped[TriggerType] = mapped_column(SAEnum(TriggerType))
     condition: Mapped[TriggerCondition] = mapped_column(SAEnum(TriggerCondition))
-    
     threshold_value: Mapped[float] = mapped_column(Float)
-    
     recipient_emails: Mapped[list[str]] = mapped_column(JSON)
-    
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
-    
-    __table_args__ = (
-        UniqueConstraint('company_id', 'trigger_type', name='uq_company_trigger_type'),
-    )
+    __table_args__ = (UniqueConstraint('company_id', 'trigger_type', name='uq_company_trigger_type'),)
 
 class PickingOrder(Base):
     __tablename__ = "picking_orders"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    
     requester_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    source_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), index=True)
+    source_location_id: Mapped[Optional[int]] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), index=True)
     destination_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), index=True)
-    
     status: Mapped[PickingOrderStatus] = mapped_column(SAEnum(PickingOrderStatus), default=PickingOrderStatus.NEW, index=True)
-    notes: Mapped[str | None] = mapped_column(Text)
-    
+    notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, index=True)
-    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
-    
+    completed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
     requester: Mapped["User"] = relationship()
-    source_location: Mapped["Location"] = relationship(foreign_keys=[source_location_id])
+    # --- OPRAVENÝ ZÁPIS ---
+    source_location: Mapped[Optional["Location"]] = relationship(foreign_keys=[source_location_id])
     destination_location: Mapped["Location"] = relationship(foreign_keys=[destination_location_id])
-    
     items: Mapped[list["PickingOrderItem"]] = relationship(back_populates="picking_order", cascade="all, delete-orphan")
-
 
 class PickingOrderItem(Base):
     __tablename__ = "picking_order_items"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     picking_order_id: Mapped[int] = mapped_column(ForeignKey("picking_orders.id", ondelete="CASCADE"), index=True)
-    
-    inventory_item_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_items.id", ondelete="SET NULL"))
-    requested_item_description: Mapped[str | None] = mapped_column(String(512)) # Pro položky, co nejsou ve skladu
-    
+    inventory_item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_items.id", ondelete="SET NULL"))
+    requested_item_description: Mapped[Optional[str]] = mapped_column(String(512))
     requested_quantity: Mapped[int] = mapped_column(Integer)
-    picked_quantity: Mapped[int | None] = mapped_column(Integer)
-    
+    picked_quantity: Mapped[Optional[int]] = mapped_column(Integer)
     picking_order: Mapped["PickingOrder"] = relationship(back_populates="items")
     inventory_item: Mapped["InventoryItem"] = relationship()

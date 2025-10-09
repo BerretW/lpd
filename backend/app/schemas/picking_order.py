@@ -24,7 +24,8 @@ class PickingOrderItemCreateIn(BaseModel):
         return self
 
 class PickingOrderCreateIn(BaseModel):
-    source_location_id: int
+    # --- ZMĚNA ZDE ---
+    source_location_id: Optional[int] = None
     destination_location_id: int
     notes: Optional[str] = None
     items: List[PickingOrderItemCreateIn]
@@ -32,14 +33,13 @@ class PickingOrderCreateIn(BaseModel):
 # --- Schémata pro splnění ---
 
 class PickingOrderItemFulfillIn(BaseModel):
-    picking_order_item_id: int # ID původní položky v požadavku
+    picking_order_item_id: int
     picked_quantity: int
-    inventory_item_id: Optional[int] = None # Povinné, pokud původní byl jen text
+    inventory_item_id: Optional[int] = None
 
 class PickingOrderFulfillIn(BaseModel):
     items: List[PickingOrderItemFulfillIn]
 
-# --- NOVÉ SCHÉMA PRO ZMĚNU STAVU ---
 class PickingOrderStatusUpdateIn(BaseModel):
     status: PickingOrderStatus
 
@@ -61,7 +61,8 @@ class PickingOrderOut(BaseModel):
     completed_at: Optional[datetime] = None
     
     requester: UserOut
-    source_location: LocationOut
+    # --- ZMĚNA ZDE ---
+    source_location: Optional[LocationOut] = None
     destination_location: LocationOut
     
     items: List[PickingOrderItemOut] = []
