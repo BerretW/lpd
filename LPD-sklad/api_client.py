@@ -36,6 +36,44 @@ class ApiClient:
             print(f"Chyba připojení k API: {e}")
             return False
 
+    def try_login_with_token(self, token: str) -> bool:
+        """
+        NOVÁ METODA: Pokusí se ověřit existující token a nastavit session.
+        Využívá se pro automatické přihlášení.
+        """
+        try:
+            self._token = token
+            decoded_token = jwt.decode(self._token, options={"verify_signature": False})
+            
+            tenants = decoded_token.get("tenants")
+            if not tenants:
+                print("Chyba: Token neobsahuje informace o firmě (tenants).")
+                self._token = None # Zneplatníme token
+                return False
+            
+            self.company_id = tenants[0]
+            self.user_email = decoded_token.get("sub") # 'sub' je standard pro subjekt/username v JWT
+
+            # Ověříme token provedením jednoduchého autorizovaného požadavku
+            if self.get_company_members() is not None:
+                print(f"Automatické přihlášení pro {self.user_email} úspěšné.")
+                return True
+            else:
+                # Požadavek selhal, token je pravděpodobně expirovaný nebo neplatný
+                print("Ověření tokenu selhalo. Token je pravděpodobně expirovaný.")
+                self._token = None
+                self.company_id = None
+                self.user_email = None
+                return False
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError) as e:
+            print(f"Chyba při dekódování tokenu: {e}")
+            self._token = None
+            return False
+        except Exception as e:
+            print(f"Neočekávaná chyba při ověřování tokenu: {e}")
+            self._token = None
+            return False
+
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         """Pomocná metoda pro tvorbu autorizovaných požadavků."""
         if not self._token or not self.company_id:

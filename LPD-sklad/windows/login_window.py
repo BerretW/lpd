@@ -1,7 +1,7 @@
 # windows/login_window.py
-from PyQt6.QtWidgets import QDialog, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QLabel, QFrame
+from PyQt6.QtWidgets import QDialog, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QLabel, QCheckBox
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSettings
 import qtawesome as qta
 
 # Předpokládáme, že soubor styling.py je ve stejném adresáři jako main.py
@@ -32,21 +32,31 @@ class LoginWindow(QDialog):
         self.password_input.setPlaceholderText("●●●●●●●●●●")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         
+        # ZMĚNA: Přidán QCheckBox pro zapamatování
+        self.remember_me_checkbox = QCheckBox("Zapamatovat si mě")
+        
         self.login_button = QPushButton(qta.icon('fa5s.sign-in-alt'), " Přihlásit")
 
         layout.addWidget(QLabel("E-mail:"))
         layout.addWidget(self.email_input)
         layout.addWidget(QLabel("Heslo:"))
         layout.addWidget(self.password_input)
+        layout.addWidget(self.remember_me_checkbox) # Přidání do layoutu
         layout.addSpacing(15)
         layout.addWidget(self.login_button)
         
-        # Testovací data
-        self.email_input.setText("admin@mojefirma.cz")
-        self.password_input.setText("SuperSilneHeslo123")
+        self._load_settings() # ZMĚNA: Načtení uložených dat
         
         self.login_button.clicked.connect(self.handle_login)
         self.password_input.returnPressed.connect(self.handle_login)
+
+    def _load_settings(self):
+        """NOVÁ METODA: Načte uložený e-mail a předvyplní formulář."""
+        settings = QSettings()
+        saved_email = settings.value("user/email", "")
+        if saved_email:
+            self.email_input.setText(saved_email)
+            self.remember_me_checkbox.setChecked(True)
 
     def handle_login(self):
         email = self.email_input.text()
@@ -59,12 +69,25 @@ class LoginWindow(QDialog):
         self.login_button.setEnabled(False)
         self.login_button.setText(" Přihlašuji se...")
         
+        # QCoreApplication.processEvents() # Možnost pro překreslení GUI, pokud by zamrzalo
+        
         success = self.api_client.login(email, password)
         
         self.login_button.setEnabled(True)
         self.login_button.setText(" Přihlásit")
         
         if success:
+            self._save_settings() # ZMĚNA: Uložení nastavení
             self.accept()
         else:
             QMessageBox.critical(self, "Přihlášení selhalo", "Zkontrolujte zadané údaje a připojení k síti.")
+
+    def _save_settings(self):
+        """NOVÁ METODA: Uloží nebo smaže přihlašovací údaje podle checkboxu."""
+        settings = QSettings()
+        if self.remember_me_checkbox.isChecked():
+            settings.setValue("user/email", self.api_client.user_email)
+            settings.setValue("user/token", self.api_client._token)
+        else:
+            settings.remove("user/email")
+            settings.remove("user/token")

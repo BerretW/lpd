@@ -1,8 +1,10 @@
 # windows/main_window.py
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
                              QPushButton, QHBoxLayout, QLineEdit, QLabel, QAbstractItemView, 
-                             QMessageBox, QFileDialog, QComboBox, QGroupBox, QSplitter, QTabWidget)
-from PyQt6.QtCore import Qt, QDateTime
+                             QMessageBox, QFileDialog, QComboBox, QGroupBox, QSplitter, 
+                             QTabWidget, QToolBar, QSizePolicy)
+from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, QDateTime, QSize # OPRAVA: Přidán import QSize
 import qtawesome as qta
 
 from styling import MAIN_STYLESHEET
@@ -33,17 +35,39 @@ class MainWindow(QMainWindow):
         self.locations = []
         self.company_members = []
 
+        self._create_actions()
         self._setup_ui()
         self.load_initial_data()
         self.statusBar().showMessage(f"Přihlášen jako: {api_client.user_email}")
+
+    def _create_actions(self):
+        """NOVÁ METODA: Vytvoří QAction objekty pro použití v toolbaru."""
+        # Správa položek a číselníků
+        self.add_item_action = QAction(qta.icon('fa5s.plus-circle'), "Nová položka", self)
+        self.edit_item_action = QAction(qta.icon('fa5s.edit'), "Upravit položku", self)
+        self.locations_action = QAction(qta.icon('fa5s.map-marker-alt'), "Správa lokací", self)
+        self.categories_action = QAction(qta.icon('fa5s.sitemap'), "Správa kategorií", self)
+        # Požadavky
+        self.create_picking_order_action = QAction(qta.icon('fa5s.file-medical'), "Vytvořit požadavek", self)
+        self.fulfill_picking_order_action = QAction(qta.icon('fa5s.check-double'), "Zpracovat požadavek", self)
+        # Operace
+        self.movement_action = QAction(qta.icon('fa5s.dolly-flatbed'), "Naskladnit / Přesunout", self)
+        self.write_off_action = QAction(qta.icon('fa5s.trash-alt'), "Odepsat položku", self)
+        # Nástroje
+        self.audit_log_action = QAction(qta.icon('fa5s.history'), "Historie pohybů", self)
+        self.import_xls_action = QAction(qta.icon('fa5s.file-upload'), "Import z XLS", self)
+        self.export_inventory_action = QAction(qta.icon('fa5s.file-excel'), "Export inventury", self)
+        # Obnovení
+        self.refresh_action = QAction(qta.icon('fa5s.sync-alt'), "Obnovit vše", self)
+
 
     def _setup_ui(self):
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
 
-        top_layout = self._create_top_button_panel()
-        self.layout.addLayout(top_layout)
+        # ZMĚNA: Horní panel je nyní řešen přes QToolBar pro čistší vzhled
+        self._create_toolbar()
         
         self.tabs = QTabWidget()
         self.inventory_tab = self._create_inventory_tab()
@@ -55,53 +79,39 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(self.tabs)
         self._connect_signals()
 
-    def _create_top_button_panel(self):
-        top_layout = QHBoxLayout()
-        top_layout.setContentsMargins(0, 0, 0, 10)
+    def _create_toolbar(self):
+        """NOVÁ METODA: Vytvoří a naplní hlavní toolbar."""
+        toolbar = QToolBar("Hlavní nástroje")
         
-        data_group = QGroupBox("Správa položek a číselníků")
-        data_layout = QHBoxLayout(data_group)
-        self.add_button = QPushButton(qta.icon('fa5s.plus-circle'), " Nová položka")
-        self.edit_button = QPushButton(qta.icon('fa5s.edit'), " Upravit položku")
-        self.locations_button = QPushButton(qta.icon('fa5s.map-marker-alt'), " Správa lokací")
-        self.categories_button = QPushButton(qta.icon('fa5s.sitemap'), " Správa kategorií")
-        data_layout.addWidget(self.add_button)
-        data_layout.addWidget(self.edit_button)
-        data_layout.addWidget(self.locations_button)
-        data_layout.addWidget(self.categories_button)
+        # OPRAVA: Správné nastavení velikosti ikon
+        # Získáme výšku textu a vytvoříme z ní QSize objekt.
+        icon_height = self.fontMetrics().height()
+        toolbar.setIconSize(QSize(icon_height, icon_height))
 
-        picking_group = QGroupBox("Požadavky na materiál")
-        picking_layout = QHBoxLayout(picking_group)
-        self.create_picking_order_button = QPushButton(qta.icon('fa5s.file-medical'), " Vytvořit požadavek")
-        self.fulfill_picking_order_button = QPushButton(qta.icon('fa5s.check-double'), " Zpracovat požadavek")
-        picking_layout.addWidget(self.create_picking_order_button)
-        picking_layout.addWidget(self.fulfill_picking_order_button)
+        self.addToolBar(toolbar)
+
+        toolbar.addAction(self.add_item_action)
+        toolbar.addAction(self.edit_item_action)
+        toolbar.addSeparator()
+        toolbar.addAction(self.locations_action)
+        toolbar.addAction(self.categories_action)
+        toolbar.addSeparator()
+        toolbar.addAction(self.create_picking_order_action)
+        toolbar.addAction(self.fulfill_picking_order_action)
+        toolbar.addSeparator()
+        toolbar.addAction(self.movement_action)
+        toolbar.addAction(self.write_off_action)
+        toolbar.addSeparator()
+        toolbar.addAction(self.audit_log_action)
+        toolbar.addAction(self.import_xls_action)
+        toolbar.addAction(self.export_inventory_action)
         
-        operations_group = QGroupBox("Skladové operace")
-        operations_layout = QHBoxLayout(operations_group)
-        self.place_button = QPushButton(qta.icon('fa5s.dolly-flatbed'), " Naskladnit / Přesunout")
-        self.write_off_button = QPushButton(qta.icon('fa5s.trash-alt'), " Odepsat položku")
-        operations_layout.addWidget(self.place_button)
-        operations_layout.addWidget(self.write_off_button)
-
-        tools_group = QGroupBox("Nástroje a Audit")
-        tools_layout = QHBoxLayout(tools_group)
-        self.audit_log_button = QPushButton(qta.icon('fa5s.history'), " Historie pohybů")
-        self.import_xls_button = QPushButton(qta.icon('fa5s.file-upload'), " Import z XLS")
-        self.export_inventory_button = QPushButton(qta.icon('fa5s.file-excel'), " Export inventury")
-        tools_layout.addWidget(self.audit_log_button)
-        tools_layout.addWidget(self.import_xls_button)
-        tools_layout.addWidget(self.export_inventory_button)
+        # Přidá "pružinu", která odtlačí následující akci na pravý okraj
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        toolbar.addWidget(spacer)
         
-        top_layout.addWidget(data_group)
-        top_layout.addWidget(picking_group)
-        top_layout.addWidget(operations_group)
-        top_layout.addWidget(tools_group)
-        top_layout.addStretch()
-
-        self.refresh_button = QPushButton(qta.icon('fa5s.sync-alt'), " Obnovit vše")
-        top_layout.addWidget(self.refresh_button)
-        return top_layout
+        toolbar.addAction(self.refresh_action)
 
     def _create_inventory_tab(self):
         tab = QWidget()
@@ -186,20 +196,23 @@ class MainWindow(QMainWindow):
         return tab
 
     def _connect_signals(self):
-        self.refresh_button.clicked.connect(self.load_initial_data)
-        self.add_button.clicked.connect(self.add_new_item)
-        self.edit_button.clicked.connect(self.edit_selected_item)
+        # ZMĚNA: Propojení signálů z QAction místo QPushButton
+        self.refresh_action.triggered.connect(self.load_initial_data)
+        self.add_item_action.triggered.connect(self.add_new_item)
+        self.edit_item_action.triggered.connect(self.edit_selected_item)
+        self.locations_action.triggered.connect(self.manage_locations)
+        self.categories_action.triggered.connect(self.manage_categories)
+        self.create_picking_order_action.triggered.connect(self.open_create_picking_order_dialog)
+        self.fulfill_picking_order_action.triggered.connect(self.open_fulfill_picking_order_dialog)
+        self.movement_action.triggered.connect(self.manage_movements)
+        self.write_off_action.triggered.connect(self.open_write_off_dialog)
+        self.audit_log_action.triggered.connect(self.show_audit_logs)
+        self.import_xls_action.triggered.connect(self.import_from_xls)
+        self.export_inventory_action.triggered.connect(self.export_inventory_xls)
+
+        # Ostatní propojení zůstávají
         self.inventory_table.doubleClicked.connect(self.edit_selected_item)
         self.inventory_table.itemSelectionChanged.connect(self.update_location_details_view)
-        self.locations_button.clicked.connect(self.manage_locations)
-        self.categories_button.clicked.connect(self.manage_categories)
-        self.create_picking_order_button.clicked.connect(self.open_create_picking_order_dialog)
-        self.fulfill_picking_order_button.clicked.connect(self.open_fulfill_picking_order_dialog)
-        self.place_button.clicked.connect(self.manage_movements)
-        self.write_off_button.clicked.connect(self.open_write_off_dialog)
-        self.audit_log_button.clicked.connect(self.show_audit_logs)
-        self.import_xls_button.clicked.connect(self.import_from_xls)
-        self.export_inventory_button.clicked.connect(self.export_inventory_xls)
         self.search_input.textChanged.connect(self.filter_inventory_table)
         self.category_filter_combo.currentIndexChanged.connect(self.load_inventory_data)
         self.picking_status_filter.currentIndexChanged.connect(self.load_picking_orders)
@@ -269,15 +282,12 @@ class MainWindow(QMainWindow):
         for row, order in enumerate(self.picking_orders):
             dt = QDateTime.fromString(order['created_at'], Qt.DateFormat.ISODate)
             
-            # --- OPRAVA ZDE ---
             source_location = order.get('source_location')
             source_name = "Hlavní sklad" if source_location is None else source_location.get('name', 'N/A')
             
             self.picking_orders_table.setItem(row, 0, QTableWidgetItem(str(order['id'])))
             self.picking_orders_table.setItem(row, 1, QTableWidgetItem(order['status']))
             self.picking_orders_table.setItem(row, 2, QTableWidgetItem(source_name))
-            # --- KONEC OPRAVY ---
-
             self.picking_orders_table.setItem(row, 3, QTableWidgetItem(order.get('destination_location', {}).get('name', 'N/A')))
             self.picking_orders_table.setItem(row, 4, QTableWidgetItem(order.get('created_by', {}).get('email', 'N/A')))
             self.picking_orders_table.setItem(row, 5, QTableWidgetItem(dt.toLocalTime().toString("dd.MM.yyyy HH:mm")))
@@ -305,14 +315,14 @@ class MainWindow(QMainWindow):
         self.picking_order_detail_table.setRowCount(0)
         selected_rows = self.picking_orders_table.selectionModel().selectedRows()
         if not selected_rows:
-            self.fulfill_picking_order_button.setEnabled(False)
+            self.fulfill_picking_order_action.setEnabled(False)
             return
         order_id = int(self.picking_orders_table.item(selected_rows[0].row(), 0).text())
         order = next((o for o in self.picking_orders if o['id'] == order_id), None)
         if not order: return
 
         can_fulfill = order['status'] in ['new', 'in_progress']
-        self.fulfill_picking_order_button.setEnabled(can_fulfill)
+        self.fulfill_picking_order_action.setEnabled(can_fulfill)
 
         items = order.get('items', [])
         self.picking_order_detail_table.setRowCount(len(items))

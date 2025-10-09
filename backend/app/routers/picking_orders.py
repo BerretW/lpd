@@ -156,6 +156,33 @@ async def update_picking_order_status(
     await db.commit()
     return await get_picking_order_or_404(db, company_id, order_id)
 
+# DELETE ORDER
+@router.delete("/{order_id}", response_model=PickingOrderOut)
+async def delete_picking_order(
+    company_id: int,
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access)
+):
+    """
+    Smaže požadavek na materiál, pokud ještě nebyl splněn nebo zrušen.
+    """
+    order = await db.get(PickingOrder, order_id)
+    if not order or order.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Picking order not found")
+
+    if order.status in [PickingOrderStatus.COMPLETED, PickingOrderStatus.CANCELLED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete an order that is already {order.status.value}."
+        )
+
+    await db.delete(order)
+    await db.commit()
+    return order
+
+
+
 
 @router.post("/{order_id}/fulfill", response_model=PickingOrderOut)
 async def fulfill_picking_order(
@@ -166,9 +193,11 @@ async def fulfill_picking_order(
     token: Dict[str, Any] = Depends(require_company_access)
 ):
     """
-    Splní požadavek na materiál. Rozlišuje mezi přesunem a pořízením.
-    - Pokud má požadavek zdrojovou lokaci, provede přesun (výdej -> příjem).
-    - Pokud nemá zdrojovou lokaci, provede pouze naskladnění na cílovou lokaci.
+    Splní požadavek na materiál. Tento proces je VŽDY chápán jako PŘESUN
+    materiálu z explicitně zadané zdrojové lokace do cílové lokace požadavku.
+
+    Skladník musí pro každou položku uvést, odkud ji bere, a systém ověří
+    dostupnost na daném skladě.
     """
     order = await get_picking_order_or_404(db, company_id, order_id)
     if order.status not in [PickingOrderStatus.NEW, PickingOrderStatus.IN_PROGRESS]:
@@ -193,21 +222,20 @@ async def fulfill_picking_order(
         if item_in.picked_quantity == 0:
             continue
 
-        log_details = ""
-        log_action: AuditLogAction
+        # --- NOVÁ SJEDNOCENÁ LOGIKA ---
 
-        if order.source_location_id:
-            source_stock = await db.get(ItemLocationStock, (final_item_id, order.source_location_id))
-            if not source_stock or source_stock.quantity < item_in.picked_quantity:
-                raise HTTPException(400, f"Not enough stock for item ID {final_item_id} at source location.")
-            source_stock.quantity -= item_in.picked_quantity
-            
-            log_details = f"Splněn požadavek #{order.id}: {item_in.picked_quantity} ks přesunuto z '{order.source_location.name}' do '{order.destination_location.name}'."
-            log_action = AuditLogAction.picking_fulfilled
-        else:
-            log_details = f"Splněn požadavek na pořízení #{order.id}: {item_in.picked_quantity} ks naskladněno do '{order.destination_location.name}'."
-            log_action = AuditLogAction.location_placed
+        # 1. Ověření a výdej ze ZADANÉ zdrojové lokace
+        source_location_id = item_in.source_location_id
+        source_stock = await db.get(ItemLocationStock, (final_item_id, source_location_id))
+        if not source_stock or source_stock.quantity < item_in.picked_quantity:
+            item_info = await db.get(InventoryItem, final_item_id)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Not enough stock for item '{item_info.name if item_info else 'N/A'}' (ID: {final_item_id}) at the specified source location (ID: {source_location_id})."
+            )
+        source_stock.quantity -= item_in.picked_quantity
 
+        # 2. Příjem na cílovou lokaci (z původního požadavku)
         dest_stock = await db.get(ItemLocationStock, (final_item_id, order.destination_location_id))
         if dest_stock:
             dest_stock.quantity += item_in.picked_quantity
@@ -215,10 +243,12 @@ async def fulfill_picking_order(
             dest_stock = ItemLocationStock(inventory_item_id=final_item_id, location_id=order.destination_location_id, quantity=item_in.picked_quantity)
             db.add(dest_stock)
 
+        # 3. Auditní záznam
+        source_location = await db.get(Location, source_location_id)
         log = InventoryAuditLog(
             item_id=final_item_id, user_id=user_id, company_id=company_id,
-            action=log_action,
-            details=log_details
+            action=AuditLogAction.picking_fulfilled,
+            details=f"Splněn požadavek #{order.id}: {item_in.picked_quantity} ks přesunuto z '{source_location.name if source_location else 'N/A'}' do '{order.destination_location.name}'."
         )
         db.add(log)
 

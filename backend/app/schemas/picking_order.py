@@ -36,6 +36,7 @@ class PickingOrderItemFulfillIn(BaseModel):
     picking_order_item_id: int
     picked_quantity: int
     inventory_item_id: Optional[int] = None
+    source_location_id: int # Odkud se materiál fyzicky bere
 
 class PickingOrderFulfillIn(BaseModel):
     items: List[PickingOrderItemFulfillIn]

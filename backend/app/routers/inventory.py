@@ -52,13 +52,13 @@ async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryIt
         select(InventoryItem)
         .where(InventoryItem.id == item_id)
         .options(
+            # VÝRAZNĚ ZVÝŠENÁ HLOUBKA NAČÍTÁNÍ KATEGORIÍ
             selectinload(InventoryItem.category)
-                .selectinload(InventoryCategory.children)
-                .selectinload(InventoryCategory.children)
-                .selectinload(InventoryCategory.children)
-                .selectinload(InventoryCategory.children),
-            # --- OPRAVA ZDE ---
-            # Přidáváme další úroveň selectinload pro načtení authorized_users
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children),
             selectinload(InventoryItem.locations)
                 .selectinload(ItemLocationStock.location)
                 .selectinload(Location.authorized_users)
@@ -86,13 +86,13 @@ async def list_inventory_items(
         select(InventoryItem)
         .where(InventoryItem.company_id == company_id)
         .options(
+            # VÝRAZNĚ ZVÝŠENÁ HLOUBKA I ZDE
             selectinload(InventoryItem.category)
-                .selectinload(InventoryCategory.children)
-                .selectinload(InventoryCategory.children)
-                .selectinload(InventoryCategory.children)
-                .selectinload(InventoryCategory.children),
-            # --- OPRAVA ZDE ---
-            # I zde přidáváme další úroveň selectinload
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children)
+                .selectinload(InventoryCategory.children).selectinload(InventoryCategory.children),
             selectinload(InventoryItem.locations)
                 .selectinload(ItemLocationStock.location)
                 .selectinload(Location.authorized_users)
