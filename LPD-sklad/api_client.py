@@ -332,3 +332,16 @@ class ApiClient:
                 return {"error": error_detail} # Vrátíme slovník s chybou
             except:
                 return None
+    
+    # --- NOVÁ METODA PRO MAZÁNÍ ---
+    def delete_picking_order(self, order_id: int) -> bool:
+        """Smaže požadavek na materiál."""
+        try:
+            endpoint = f"/companies/{self.company_id}/picking-orders/{order_id}"
+            response = self._make_request("DELETE", endpoint)
+            response.raise_for_status()
+            # Backend vrací 200 OK s objektem, takže kontrolujeme tento kód
+            return response.status_code == 200
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při mazání požadavku {order_id}: {e}")
+            return False

@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTableWidget, QT
                              QMessageBox, QFileDialog, QComboBox, QGroupBox, QSplitter, 
                              QTabWidget, QToolBar, QSizePolicy)
 from PyQt6.QtGui import QAction
-from PyQt6.QtCore import Qt, QDateTime, QSize # OPRAVA: Přidán import QSize
+from PyQt6.QtCore import Qt, QDateTime, QSize
 import qtawesome as qta
 
 from styling import MAIN_STYLESHEET
@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Přihlášen jako: {api_client.user_email}")
 
     def _create_actions(self):
-        """NOVÁ METODA: Vytvoří QAction objekty pro použití v toolbaru."""
+        """Vytvoří QAction objekty pro použití v toolbaru."""
         # Správa položek a číselníků
         self.add_item_action = QAction(qta.icon('fa5s.plus-circle'), "Nová položka", self)
         self.edit_item_action = QAction(qta.icon('fa5s.edit'), "Upravit položku", self)
@@ -50,6 +50,8 @@ class MainWindow(QMainWindow):
         # Požadavky
         self.create_picking_order_action = QAction(qta.icon('fa5s.file-medical'), "Vytvořit požadavek", self)
         self.fulfill_picking_order_action = QAction(qta.icon('fa5s.check-double'), "Zpracovat požadavek", self)
+        # --- NOVÁ AKCE ---
+        self.delete_picking_order_action = QAction(qta.icon('fa5s.trash'), "Smazat požadavek", self)
         # Operace
         self.movement_action = QAction(qta.icon('fa5s.dolly-flatbed'), "Naskladnit / Přesunout", self)
         self.write_off_action = QAction(qta.icon('fa5s.trash-alt'), "Odepsat položku", self)
@@ -66,7 +68,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
 
-        # ZMĚNA: Horní panel je nyní řešen přes QToolBar pro čistší vzhled
         self._create_toolbar()
         
         self.tabs = QTabWidget()
@@ -80,14 +81,10 @@ class MainWindow(QMainWindow):
         self._connect_signals()
 
     def _create_toolbar(self):
-        """NOVÁ METODA: Vytvoří a naplní hlavní toolbar."""
+        """Vytvoří a naplní hlavní toolbar."""
         toolbar = QToolBar("Hlavní nástroje")
-        
-        # OPRAVA: Správné nastavení velikosti ikon
-        # Získáme výšku textu a vytvoříme z ní QSize objekt.
         icon_height = self.fontMetrics().height()
         toolbar.setIconSize(QSize(icon_height, icon_height))
-
         self.addToolBar(toolbar)
 
         toolbar.addAction(self.add_item_action)
@@ -98,6 +95,8 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self.create_picking_order_action)
         toolbar.addAction(self.fulfill_picking_order_action)
+        # --- PŘIDÁNÍ TLAČÍTKA DO TOOLBARU ---
+        toolbar.addAction(self.delete_picking_order_action)
         toolbar.addSeparator()
         toolbar.addAction(self.movement_action)
         toolbar.addAction(self.write_off_action)
@@ -106,7 +105,6 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.import_xls_action)
         toolbar.addAction(self.export_inventory_action)
         
-        # Přidá "pružinu", která odtlačí následující akci na pravý okraj
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         toolbar.addWidget(spacer)
@@ -196,7 +194,6 @@ class MainWindow(QMainWindow):
         return tab
 
     def _connect_signals(self):
-        # ZMĚNA: Propojení signálů z QAction místo QPushButton
         self.refresh_action.triggered.connect(self.load_initial_data)
         self.add_item_action.triggered.connect(self.add_new_item)
         self.edit_item_action.triggered.connect(self.edit_selected_item)
@@ -204,13 +201,14 @@ class MainWindow(QMainWindow):
         self.categories_action.triggered.connect(self.manage_categories)
         self.create_picking_order_action.triggered.connect(self.open_create_picking_order_dialog)
         self.fulfill_picking_order_action.triggered.connect(self.open_fulfill_picking_order_dialog)
+        # --- PROPOJENÍ NOVÉ AKCE ---
+        self.delete_picking_order_action.triggered.connect(self.delete_selected_picking_order)
         self.movement_action.triggered.connect(self.manage_movements)
         self.write_off_action.triggered.connect(self.open_write_off_dialog)
         self.audit_log_action.triggered.connect(self.show_audit_logs)
         self.import_xls_action.triggered.connect(self.import_from_xls)
         self.export_inventory_action.triggered.connect(self.export_inventory_xls)
 
-        # Ostatní propojení zůstávají
         self.inventory_table.doubleClicked.connect(self.edit_selected_item)
         self.inventory_table.itemSelectionChanged.connect(self.update_location_details_view)
         self.search_input.textChanged.connect(self.filter_inventory_table)
@@ -316,13 +314,19 @@ class MainWindow(QMainWindow):
         selected_rows = self.picking_orders_table.selectionModel().selectedRows()
         if not selected_rows:
             self.fulfill_picking_order_action.setEnabled(False)
+            self.delete_picking_order_action.setEnabled(False) # Deaktivace tlačítka
             return
+            
         order_id = int(self.picking_orders_table.item(selected_rows[0].row(), 0).text())
         order = next((o for o in self.picking_orders if o['id'] == order_id), None)
         if not order: return
 
+        # --- AKTUALIZOVANÁ LOGIKA PRO AKTIVACI/DEAKTIVACI TLAČÍTEK ---
         can_fulfill = order['status'] in ['new', 'in_progress']
+        can_delete = order['status'] not in ['completed', 'cancelled']
         self.fulfill_picking_order_action.setEnabled(can_fulfill)
+        self.delete_picking_order_action.setEnabled(can_delete)
+        # --- KONEC AKTUALIZACE ---
 
         items = order.get('items', [])
         self.picking_order_detail_table.setRowCount(len(items))
@@ -405,6 +409,28 @@ class MainWindow(QMainWindow):
             if dialog.exec():
                 self.load_picking_orders()
                 self.load_inventory_data()
+
+    # --- NOVÁ METODA PRO OBSLUHU MAZÁNÍ ---
+    def delete_selected_picking_order(self):
+        selected_rows = self.picking_orders_table.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+
+        order_id = int(self.picking_orders_table.item(selected_rows[0].row(), 0).text())
+        
+        reply = QMessageBox.question(self, "Smazat požadavek?", 
+                                     f"Opravdu chcete trvale smazat požadavek č. {order_id}?\n"
+                                     "Tato akce je nevratná!",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                                     QMessageBox.StandardButton.Cancel)
+
+        if reply == QMessageBox.StandardButton.Yes:
+            success = self.api_client.delete_picking_order(order_id)
+            if success:
+                QMessageBox.information(self, "Úspěch", f"Požadavek č. {order_id} byl úspěšně smazán.")
+                self.load_picking_orders() # Znovu načteme seznam
+            else:
+                QMessageBox.critical(self, "Chyba", "Požadavek se nepodařilo smazat. Pravděpodobně již byl zpracován nebo nastala chyba serveru.")
 
     def import_from_xls(self):
         dialog = ImportDialog(self.api_client, self)
