@@ -12,6 +12,7 @@ from .category_dialog import CategoryDialog
 # --- NOVÉ IMPORTY ---
 from .location_dialog import LocationDialog
 from .movement_dialog import MovementDialog
+from .import_dialog import ImportDialog
 from xls_exporter import export_inventory_to_xls, export_audit_logs_to_xls
 
 class MainWindow(QMainWindow):
@@ -268,16 +269,14 @@ class MainWindow(QMainWindow):
             self.load_inventory_data()
 
     def import_from_xls(self):
-        QMessageBox.information(self, "Změna v importu", 
-            "Import nyní aktualizuje pouze popisné údaje položek (název, cena, SKU, EAN atd.).\n\n"
-            "Množství na skladě se již neimportuje. Pro naskladnění prosím použijte tlačítko 'Naskladnit / Přesunout'.")
-        
-        path, _ = QFileDialog.getOpenFileName(self, "Otevřít soubor pro import údajů", "", "Excel soubory (*.xlsx *.xls)")
-        if not path: return
-        
-        # ... Logika pro aktualizaci dat, ale bez `quantity` ...
-        self.statusBar().showMessage("Import byl zjednodušen. Zkontrolujte prosím data.")
-        self.load_initial_data()
+        dialog = ImportDialog(self.api_client, self)
+        if dialog.exec():
+            # exec() bude true, pokud uživatel zavře okno po úspěšném importu
+            self.statusBar().showMessage("Import dokončen. Obnovuji data...", 5000)
+            self.load_initial_data()
+        else:
+            # Uživatel zrušil nebo jen zavřel okno
+            self.statusBar().showMessage("Import zrušen.", 5000)
     
     def export_inventory_xls(self):
         # ... (beze změny)

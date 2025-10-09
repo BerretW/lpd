@@ -42,8 +42,6 @@ class ItemDialog(QDialog):
         form_layout.addRow("Kategorie:", self.category_combo)
         form_layout.addRow("Popis:", self.description_input)
         
-        # --- ZMĚNA: Pole pro množství bylo odstraněno ---
-        
         layout.addLayout(form_layout)
         layout.addWidget(self.save_button)
         
@@ -73,7 +71,6 @@ class ItemDialog(QDialog):
                 self.category_combo.setCurrentIndex(index)
 
     def save_item(self):
-        # --- ZMĚNA: 'quantity' se již neposílá ---
         data = {
             "name": self.name_input.text().strip(),
             "sku": self.sku_input.text().strip(),
@@ -92,14 +89,17 @@ class ItemDialog(QDialog):
         
         result = None
         if self.is_edit_mode:
-            # Vyloučíme klíče, které nechceme posílat, pokud se nezměnily
             update_payload = {}
             for key, value in data.items():
-                # Zjednodušená kontrola, v reálu může být komplexnější
                 if str(self.item_data.get(key)) != str(value):
                     update_payload[key] = value
-            # Speciální případ pro kategorii
-            current_cat_id = self.item_data.get('category', {}).get('id')
+            
+            # --- OPRAVA ZDE ---
+            # Bezpečné zjištění ID aktuální kategorie
+            category_info = self.item_data.get('category')
+            current_cat_id = category_info.get('id') if category_info else None
+            # --- KONEC OPRAVY ---
+
             if current_cat_id != data['category_id']:
                 update_payload['category_id'] = data['category_id']
 

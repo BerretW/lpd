@@ -2,7 +2,9 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 from sqlalchemy import (
     String, Integer, ForeignKey, DateTime, Boolean,
-    UniqueConstraint, Enum as SAEnum, Text, Float, Date, TIMESTAMP, JSON
+    UniqueConstraint, Enum as SAEnum, Text, Float, Date, TIMESTAMP, JSON,
+    # --- PŘIDANÉ IMPORTY ---
+    Table, Column
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
@@ -10,6 +12,15 @@ from app.db.database import Base
 # --- Pomocná funkce pro výchozí čas v UTC ---
 def now_utc():
     return datetime.now(timezone.utc)
+
+# --- NOVÁ PROPOJOVACÍ TABULKA PRO OPRÁVNĚNÍ ---
+location_permissions = Table(
+    "location_permissions",
+    Base.metadata,
+    Column("location_id", Integer, ForeignKey("locations.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 # --- Enumy ---
 class RoleEnum(str, Enum):
@@ -59,6 +70,13 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    # --- OPRAVENÝ VZTAH K LOKACÍM ---
+    authorized_locations: Mapped[list["Location"]] = relationship(
+        secondary=location_permissions,
+        # 'back_populates' je nahrazeno 'backref', které automaticky vytvoří
+        # vlastnost 'authorized_users' na modelu Location.
+        backref="authorized_users"
+    )
 
 class Company(Base):
     __tablename__ = "companies"
@@ -138,24 +156,22 @@ class InventoryItem(Base):
     is_monitored_for_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
     low_stock_threshold: Mapped[int | None] = mapped_column(Integer)
     low_stock_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    # --- ZMĚNA: Pole quantity je odstraněno. Nahrazeno vztahem k ItemLocationStock ---
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, onupdate=now_utc)
     category: Mapped["InventoryCategory"] = relationship()
-    # --- NOVÝ VZTAH ---
     locations: Mapped[list["ItemLocationStock"]] = relationship(back_populates="inventory_item", cascade="all, delete-orphan")
     __table_args__ = (UniqueConstraint("company_id", "sku", name="uq_inventory_item_company_sku"),)
 
-# --- NOVÝ MODEL PRO SKLADOVÁ UMÍSTĚNÍ ---
 class Location(Base):
     __tablename__ = "locations"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
+    # Vlastnost `authorized_users` bude automaticky vytvořena pomocí `backref`
+    # z modelu User.
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_location_company_name"),)
 
-# --- NOVÝ PROPOJOVACÍ MODEL ---
 class ItemLocationStock(Base):
     __tablename__ = "item_location_stock"
     inventory_item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id", ondelete="CASCADE"), primary_key=True)
@@ -192,7 +208,6 @@ class WorkOrder(Base):
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(50), default="new", index=True)
-    # --- PŘIDANÉ POLE ---
     budget_hours: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     budget_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
@@ -239,7 +254,6 @@ class UsedInventoryItem(Base):
     inventory_item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id"), index=True)
     quantity: Mapped[int] = mapped_column(Integer)
     log_date: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
-    # --- NOVÉ POLE ---
     from_location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"))
     inventory_item: Mapped["InventoryItem"] = relationship()
     task: Mapped["Task"] = relationship(back_populates="used_items")
@@ -262,8 +276,6 @@ class CompanySmtpSettings(Base):
     sender_email: Mapped[str] = mapped_column(String(255))
     security_protocol: Mapped[SecurityProtocolEnum] = mapped_column(SAEnum(SecurityProtocolEnum), default=SecurityProtocolEnum.TLS)
     
-    # JSON pole pro ukládání preferencí
-    # např. {"on_invite_created": true, "on_task_assigned": false}
     notification_settings: Mapped[dict] = mapped_column(JSON, default=lambda: {})
     
     company: Mapped["Company"] = relationship(back_populates="smtp_settings")
@@ -277,10 +289,8 @@ class NotificationTrigger(Base):
     trigger_type: Mapped[TriggerType] = mapped_column(SAEnum(TriggerType))
     condition: Mapped[TriggerCondition] = mapped_column(SAEnum(TriggerCondition))
     
-    # Hodnota, se kterou se porovnává, např. 80 (%) nebo 5 (kusů)
     threshold_value: Mapped[float] = mapped_column(Float)
     
-    # JSON pole pro ukládání e-mailů příjemců
     recipient_emails: Mapped[list[str]] = mapped_column(JSON)
     
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)

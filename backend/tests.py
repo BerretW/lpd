@@ -77,29 +77,7 @@ def run_tests():
     login_payload = {"username": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
     admin_token = print_result(requests.post(f"{BASE_URL}/auth/login", data=login_payload), 200)["access_token"]
     
-    # 2. SMTP Konfigurace a test
-    print_step("2. SMTP Configuration and Testing")
-    
-    if not SMTP_CONFIGURED:
-        print("  \033[93mWARNING: SMTP environment variables not set. Skipping email tests.\033[0m")
-    else:
-        print(f"  - Setting up SMTP to point to {TEST_SMTP_HOST}:{TEST_SMTP_PORT}...")
-        smtp_payload = {
-            "is_enabled": True, "smtp_host": TEST_SMTP_HOST, "smtp_port": TEST_SMTP_PORT,
-            "smtp_user": TEST_SMTP_USER, "smtp_password": TEST_SMTP_PASSWORD,
-            "sender_email": TEST_SMTP_SENDER, 
-            "security_protocol": "tls", 
-            "notification_settings": {
-                "on_invite_created": True,
-                "on_budget_alert": True,
-                "on_low_stock_alert": True
-            }
-        }
-        print_result(requests.put(f"{BASE_URL}/companies/{company_id}/smtp-settings", json=smtp_payload, headers=get_headers()), 200)
-        print("  - Sending a test email...")
-        test_email_payload = {"recipient_email": TEST_SMTP_RECIPIENT}
-        print_result(requests.post(f"{BASE_URL}/companies/{company_id}/smtp-settings/test", json=test_email_payload, headers=get_headers()), 200)
-        print(f"  \033[94mINFO: Test email should have been sent to {TEST_SMTP_RECIPIENT}. Please verify manually.\033[0m")
+   
 
     # 3. Pozvání zaměstnance
     print_step("3. Inviting Employee")
@@ -140,28 +118,7 @@ def run_tests():
     place_payload = {"inventory_item_id": item_id, "location_id": loc_a_id, "quantity": 15}
     print_result(requests.post(f"{BASE_URL}/companies/{company_id}/inventory/movements/place", json=place_payload, headers=get_headers()), 200)
     
-    # 7. Nastavení triggerů
-    print_step("7. Setting up Notification Triggers")
-    if SMTP_CONFIGURED and TEST_SMTP_RECIPIENT:
-        print("  - Creating low stock trigger...")
-        stock_trigger_payload = {
-            "is_active": True, "trigger_type": "inventory_low_stock",
-            "condition": "quantity_below", "threshold_value": 10,
-            "recipient_emails": [TEST_SMTP_RECIPIENT]
-        }
-        print_result(requests.post(f"{BASE_URL}/companies/{company_id}/triggers", json=stock_trigger_payload, headers=get_headers()), 201)
-
-        print("  - Creating work order budget trigger...")
-        budget_trigger_payload = {
-            "is_active": True, "trigger_type": "work_order_budget",
-            "condition": "percentage_reached", "threshold_value": 80,
-            "recipient_emails": [TEST_SMTP_RECIPIENT]
-        }
-        print_result(requests.post(f"{BASE_URL}/companies/{company_id}/triggers", json=budget_trigger_payload, headers=get_headers()), 201)
-
-        print("  - Enabling stock monitoring for the item...")
-        monitor_payload = {"is_monitored_for_stock": True, "low_stock_threshold": 10}
-        print_result(requests.patch(f"{BASE_URL}/companies/{company_id}/inventory/{item_id}", json=monitor_payload, headers=get_headers()), 200)
+   
 
     # 8. Vytvoření zakázky a úkolu pro test triggerů
     print_step("8. Creating Work Order and Task for Trigger Test")

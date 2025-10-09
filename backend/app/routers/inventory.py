@@ -52,13 +52,16 @@ async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryIt
         select(InventoryItem)
         .where(InventoryItem.id == item_id)
         .options(
-            # --- ZVÝŠENÁ HLOUBKA NAČÍTÁNÍ ---
             selectinload(InventoryItem.category)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children),
-            selectinload(InventoryItem.locations).selectinload(ItemLocationStock.location)
+            # --- OPRAVA ZDE ---
+            # Přidáváme další úroveň selectinload pro načtení authorized_users
+            selectinload(InventoryItem.locations)
+                .selectinload(ItemLocationStock.location)
+                .selectinload(Location.authorized_users)
         )
     )
     result = await db.execute(stmt)
@@ -83,13 +86,16 @@ async def list_inventory_items(
         select(InventoryItem)
         .where(InventoryItem.company_id == company_id)
         .options(
-            # --- ZVÝŠENÁ HLOUBKA I ZDE ---
             selectinload(InventoryItem.category)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children),
-            selectinload(InventoryItem.locations).selectinload(ItemLocationStock.location)
+            # --- OPRAVA ZDE ---
+            # I zde přidáváme další úroveň selectinload
+            selectinload(InventoryItem.locations)
+                .selectinload(ItemLocationStock.location)
+                .selectinload(Location.authorized_users)
         )
     )
 

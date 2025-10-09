@@ -1,6 +1,6 @@
 # windows/category_dialog.py
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QPushButton, QMessageBox, 
-                             QTreeWidget, QTreeWidgetItem, QLineEdit, QHBoxLayout, QLabel)
+                             QTreeWidget, QTreeWidgetItem, QLineEdit, QHBoxLayout, QLabel, QDialogButtonBox)
 
 class CategoryDialog(QDialog):
     def __init__(self, api_client, parent=None):
@@ -8,6 +8,9 @@ class CategoryDialog(QDialog):
         self.api_client = api_client
         self.setWindowTitle("Správa kategorií")
         self.setMinimumSize(400, 500)
+        
+        # Přidáme si příznak, abychom věděli, zda byla data změněna
+        self.data_has_changed = False
 
         self.layout = QVBoxLayout(self)
         
@@ -25,8 +28,14 @@ class CategoryDialog(QDialog):
         add_layout.addWidget(self.new_category_name)
         add_layout.addWidget(self.add_button)
         self.layout.addLayout(add_layout)
+        
+        # Tlačítko pro zavření
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        self.layout.addWidget(self.button_box)
 
+        # Propojení signálů
         self.add_button.clicked.connect(self.add_category)
+        self.button_box.rejected.connect(self.reject) # Tlačítko "Close" spouští reject
 
         self.load_categories()
 
@@ -58,8 +67,19 @@ class CategoryDialog(QDialog):
 
         result = self.api_client.create_category(name, parent_id)
         if result:
+            self.data_has_changed = True # Nastavíme příznak, že došlo ke změně
             self.new_category_name.clear()
-            QMessageBox.information(self, "Úspěch", f"Kategorie '{name}' byla vytvořena.")
-            self.load_categories() # Znovu načteme strom
+            self.load_categories() # Znovu načteme strom v tomto dialogu
         else:
             QMessageBox.critical(self, "Chyba", "Nepodařilo se vytvořit kategorii.")
+
+    def reject(self):
+        """
+        Přepíšeme výchozí chování. Pokud byla data změněna, zavřeme okno
+        s výsledkem "Accepted", aby hlavní okno vědělo, že má obnovit data.
+        Jinak ho zavřeme standardně.
+        """
+        if self.data_has_changed:
+            self.accept()
+        else:
+            super().reject()
