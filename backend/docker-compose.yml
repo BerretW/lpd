@@ -1,17 +1,15 @@
+# backend/docker-compose.yml
+
 version: "3.9"
 services:
   api:
     build: .
     env_file: .env
     ports: ["8020:8000"]
-    depends_on: [db]
-  db:
-    image: mysql:8
-    environment:
-      MYSQL_ROOT_PASSWORD: 1234
-      MYSQL_DATABASE: database
     volumes:
-      - dbdata:/var/lib/mysql
-    ports: ["3306:3306"]
-volumes:
-  dbdata:
+      # Připojí aktuální adresář do /app v kontejneru.
+      # Změny v kódu se tak okamžitě projeví bez nutnosti rebuild image.
+      - .:/app
+    # Spustí server s automatickým obnovením při změně souborů.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
