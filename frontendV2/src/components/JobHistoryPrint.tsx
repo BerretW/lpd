@@ -33,8 +33,11 @@ const JobHistoryPrint: React.FC<JobHistoryPrintProps> = ({ job, customer, timeEn
     const calculateDuration = (start: string, end: string): string => {
         if (!start || !end) return '0:00';
         try {
-            const [startH, startM] = start.split(':').map(Number);
-            const [endH, endM] = end.split(':').map(Number);
+            // Fix: derive time from ISO strings
+            const startTimeStr = start.substring(11, 16);
+            const endTimeStr = end.substring(11, 16);
+            const [startH, startM] = startTimeStr.split(':').map(Number);
+            const [endH, endM] = endTimeStr.split(':').map(Number);
             const startDate = new Date(0, 0, 0, startH, startM, 0);
             const endDate = new Date(0, 0, 0, endH, endM, 0);
             let diff = endDate.getTime() - startDate.getTime();
@@ -65,7 +68,8 @@ const JobHistoryPrint: React.FC<JobHistoryPrintProps> = ({ job, customer, timeEn
                 <main className="p-6 overflow-y-auto bg-slate-100">
                     <div id="history-print-area" className="bg-white p-8 shadow-lg text-black text-sm mx-auto" style={{width: '210mm'}}>
                         <h1 className="text-3xl font-bold mb-2">Historie zakázky</h1>
-                        <h2 className="text-xl text-slate-700 mb-6">{job.title}</h2>
+                        {/* Fix: WorkOrderOut has 'name' instead of 'title' */}
+                        <h2 className="text-xl text-slate-700 mb-6">{job.name}</h2>
 
                         <div className="grid grid-cols-2 gap-4 mb-6 p-4 border rounded-md">
                             <div><strong>Zákazník:</strong> {customer.name}</div>
@@ -74,7 +78,8 @@ const JobHistoryPrint: React.FC<JobHistoryPrintProps> = ({ job, customer, timeEn
                         </div>
 
                         <h3 className="text-2xl font-semibold border-b pb-2 mb-4">Servisní listy</h3>
-                        {job.serviceReports.length > 0 ? (
+                        {/* Fix: Use serviceReports which was added to WorkOrderOut in types.ts */}
+                        {job.serviceReports && job.serviceReports.length > 0 ? (
                             job.serviceReports.map(report => (
                                 <div key={report.id} className="mb-4 p-3 border rounded-md break-inside-avoid">
                                     <p><strong>Datum:</strong> {new Date(report.date).toLocaleDateString()}</p>
@@ -107,11 +112,16 @@ const JobHistoryPrint: React.FC<JobHistoryPrintProps> = ({ job, customer, timeEn
                                 <tbody>
                                     {timeEntries.map(entry => (
                                         <tr key={entry.id} className="break-inside-avoid-page">
-                                            <td className="border p-2">{new Date(entry.date).toLocaleDateString()}</td>
-                                            <td className="border p-2">{employees.find(e => e.id === entry.employeeId)?.name || 'N/A'}</td>
-                                            <td className="border p-2">{entry.startTime} - {entry.endTime}</td>
-                                            <td className="border p-2">{entry.description}</td>
-                                            <td className="border p-2 text-right font-semibold">{calculateDuration(entry.startTime, entry.endTime)}</td>
+                                            {/* Fix: use start_time for date */}
+                                            <td className="border p-2">{new Date(entry.start_time).toLocaleDateString()}</td>
+                                            {/* Fix: Membership has user.email, and entry has user.id */}
+                                            <td className="border p-2">{employees.find(e => e.user.id === entry.user.id)?.user.email || 'N/A'}</td>
+                                            {/* Fix: derive time from ISO strings */}
+                                            <td className="border p-2">{entry.start_time.substring(11, 16)} - {entry.end_time.substring(11, 16)}</td>
+                                            {/* Fix: TimeLogOut has 'notes' instead of 'description' */}
+                                            <td className="border p-2">{entry.notes || ''}</td>
+                                            {/* Fix: calculateDuration uses start_time and end_time strings */}
+                                            <td className="border p-2 text-right font-semibold">{calculateDuration(entry.start_time, entry.end_time)}</td>
                                         </tr>
                                     ))}
                                 </tbody>

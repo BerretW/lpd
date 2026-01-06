@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo } from 'react';
-import { Employee, TimeEntry, PayrollSettings } from '../types';
+import { Employee, TimeEntry, PayrollSettings, TimeLogEntryType } from '../types';
 import Modal from './common/Modal';
 import Button from './common/Button';
 import Icon from './common/Icon';
@@ -55,21 +56,25 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ employee, timeEntries, onCl
         const month = date.getMonth();
 
         const employeeTimeEntries = timeEntries.filter(entry => {
-            const entryDate = new Date(entry.date);
-            return entry.employeeId === employee.id &&
+            // Fix: Use start_time instead of date, and user.id instead of employeeId
+            const entryDate = new Date(entry.start_time);
+            return entry.user.id === employee.user.id &&
                    entryDate.getFullYear() === year &&
                    entryDate.getMonth() === month &&
-                   entry.activity === 'Práce'; // Only count work
+                   entry.entry_type === TimeLogEntryType.Work; // Fix: Use entry_type instead of activity
         });
 
         let totalHours = 0;
         let baseWorkSalary = 0;
 
         employeeTimeEntries.forEach(entry => {
-            if (!entry.startTime || !entry.endTime) return;
+            // Fix: Use start_time and end_time
+            if (!entry.start_time || !entry.end_time) return;
             try {
-                const [startH, startM] = entry.startTime.split(':').map(Number);
-                const [endH, endM] = entry.endTime.split(':').map(Number);
+                const startTimeStr = entry.start_time.substring(11, 16);
+                const endTimeStr = entry.end_time.substring(11, 16);
+                const [startH, startM] = startTimeStr.split(':').map(Number);
+                const [endH, endM] = endTimeStr.split(':').map(Number);
                 let minutes = (endH * 60 + endM) - (startH * 60 + startM);
                 if (minutes <= 0) return;
                 
@@ -77,10 +82,11 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ employee, timeEntries, onCl
                 totalHours += hours;
 
                 let rateMultiplier = 1.0;
-                const entryDate = new Date(entry.date);
+                // Fix: Use start_time to extract the date
+                const entryDate = new Date(entry.start_time);
                 const dayOfWeek = entryDate.getDay();
 
-                if (CZECH_HOLIDAYS_2024.has(entry.date)) {
+                if (CZECH_HOLIDAYS_2024.has(entry.start_time.split('T')[0])) {
                     rateMultiplier += payrollSettings.holidayRate / 100;
                 } else if (dayOfWeek === 0 || dayOfWeek === 6) { // Sunday or Saturday
                     rateMultiplier += payrollSettings.weekendRate / 100;
@@ -89,7 +95,8 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ employee, timeEntries, onCl
                 // Note: Overtime and night shift calculation is simplified.
                 // A full implementation would group hours by day for overtime
                 // and split entries for night shifts. This is an approximation.
-                baseWorkSalary += hours * employee.hourlyRate * rateMultiplier;
+                // Fix: Membership doesn't have hourlyRate directly, using added field in types.ts
+                baseWorkSalary += hours * (employee.hourlyRate || 0) * rateMultiplier;
 
             } catch {
                 // Ignore invalid time entries
@@ -116,7 +123,8 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ employee, timeEntries, onCl
             tax,
             totalDeductions,
             netSalary,
-            vacationRemaining: employee.vacationDaysTotal - employee.vacationDaysUsed,
+            // Fix: Using added fields in Membership interface
+            vacationRemaining: (employee.vacationDaysTotal || 0) - (employee.vacationDaysUsed || 0),
         };
 
     }, [employee, timeEntries, date, payrollSettings, bonus]);
@@ -128,7 +136,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ employee, timeEntries, onCl
     };
 
     return (
-        <Modal title={`Výplatní páska - ${employee.name}`} onClose={onClose}>
+        <Modal title={`Výplatní páska - ${employee.user.email}`} onClose={onClose}>
              <div className="flex justify-between items-center mb-4 p-2 bg-slate-100 rounded-md">
                 <Button onClick={() => changeMonth(-1)} variant="secondary"><Icon name="fa-arrow-left" /></Button>
                 <span className="font-bold text-lg">{date.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' })}</span>
@@ -155,7 +163,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ employee, timeEntries, onCl
                     </div>
                      <div>
                         <p><strong>Zaměstnanec:</strong></p>
-                        <p>{employee.name}</p>
+                        <p>{employee.user.email}</p>
                         <p>Role: {employee.role}</p>
                     </div>
                 </div>
@@ -185,8 +193,9 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ employee, timeEntries, onCl
 
                  <div className="mt-6 pt-4 border-t text-sm">
                     <h3 className="font-semibold text-md mb-2">Evidence dovolené</h3>
-                    <div className="flex justify-between"><span>Celkový nárok</span><span>{employee.vacationDaysTotal} dní</span></div>
-                    <div className="flex justify-between"><span>Vyčerpáno</span><span>{employee.vacationDaysUsed} dní</span></div>
+                    {/* Fix: Using added fields in Membership interface */}
+                    <div className="flex justify-between"><span>Celkový nárok</span><span>{employee.vacationDaysTotal || 0} dní</span></div>
+                    <div className="flex justify-between"><span>Vyčerpáno</span><span>{employee.vacationDaysUsed || 0} dní</span></div>
                     <div className="flex justify-between font-bold"><span>Zbývá</span><span>{payslipData.vacationRemaining} dní</span></div>
                 </div>
 

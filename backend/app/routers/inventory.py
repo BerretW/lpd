@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 
 from app.db.database import get_db
 from app.db.models import (
@@ -193,11 +194,15 @@ async def get_inventory_item_by_ean(
     return await get_full_inventory_item(item.id, db)
 
 @router.get("/{item_id}", response_model=InventoryItemOut)
-async def get_inventory_item(
-    company_id: int, item_id: int, db: AsyncSession = Depends(get_db), _=Depends(require_company_access)
-):
-    await get_item_or_404(item_id, company_id, db)
-    return await get_full_inventory_item(item_id, db)
+async def get_inventory_item(item_id: int, db: AsyncSession = Depends(get_db)): 
+    result = await db.execute(
+        select(InventoryItem)
+        .where(InventoryItem.id == item_id)
+        .options(
+            selectinload(InventoryItem.categories).selectinload(InventoryCategory.children)
+        )
+    )
+    return result.scalar_one_or_none()
 
 @router.post("/{item_id}/upload-image", response_model=InventoryItemOut)
 async def upload_inventory_item_image(

@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Employee, TimeEntry } from '../types';
 import Icon from './common/Icon';
@@ -10,8 +11,11 @@ interface AttendanceReportProps {
 const calculateDuration = (start: string, end: string): number => {
     if (!start || !end) return 0;
     try {
-        const [startH, startM] = start.split(':').map(Number);
-        const [endH, endM] = end.split(':').map(Number);
+        // Fix: derive time from ISO strings
+        const startTimeStr = start.substring(11, 16);
+        const endTimeStr = end.substring(11, 16);
+        const [startH, startM] = startTimeStr.split(':').map(Number);
+        const [endH, endM] = endTimeStr.split(':').map(Number);
         const minutes = (endH * 60 + endM) - (startH * 60 + startM);
         return minutes > 0 ? minutes / 60 : 0;
     } catch (e) {
@@ -20,21 +24,29 @@ const calculateDuration = (start: string, end: string): number => {
 };
 
 const AttendanceReport: React.FC<AttendanceReportProps> = ({ employees, timeEntries }) => {
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(employees[0]?.id || '');
+    // Fix: Membership doesn't have 'id', using user.id
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(employees[0]?.user.id.toString() || '');
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
     const filteredEntries = useMemo(() => {
         return timeEntries
             .filter(entry => 
-                entry.employeeId === selectedEmployeeId &&
-                new Date(entry.date).getMonth() === selectedMonth &&
-                new Date(entry.date).getFullYear() === selectedYear
+                // Fix: TimeLogOut has user.id, and start_time instead of date
+                entry.user.id.toString() === selectedEmployeeId &&
+                new Date(entry.start_time).getMonth() === selectedMonth &&
+                new Date(entry.start_time).getFullYear() === selectedYear
             )
-            .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+            .sort((a, b) => {
+                // Fix: Use start_time for sorting
+                const dateA = a.start_time;
+                const dateB = b.start_time;
+                return dateA.localeCompare(dateB);
+            });
     }, [timeEntries, selectedEmployeeId, selectedMonth, selectedYear]);
     
-    const totalHours = filteredEntries.reduce((sum, entry) => sum + calculateDuration(entry.startTime, entry.endTime), 0);
+    // TimeLogOut has duration_hours
+    const totalHours = filteredEntries.reduce((sum, entry) => sum + entry.duration_hours, 0);
 
     const monthOptions = Array.from({ length: 12 }, (_, i) => ({
         value: i,
@@ -50,7 +62,8 @@ const AttendanceReport: React.FC<AttendanceReportProps> = ({ employees, timeEntr
                 <div>
                     <label className="block text-sm font-medium text-slate-700">Zaměstnanec</label>
                     <select value={selectedEmployeeId} onChange={e => setSelectedEmployeeId(e.target.value)} className="mt-1 block w-full p-2 border-slate-300 rounded-md">
-                        {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                        {/* Fix: Membership has user.id and user.email */}
+                        {employees.map(emp => <option key={emp.user.id} value={emp.user.id}>{emp.user.email}</option>)}
                     </select>
                 </div>
                  <div>
@@ -81,11 +94,14 @@ const AttendanceReport: React.FC<AttendanceReportProps> = ({ employees, timeEntr
                     <tbody>
                         {filteredEntries.map(entry => (
                              <tr key={entry.id} className="border-b hover:bg-slate-50">
-                                <td className="p-3 whitespace-nowrap">{new Date(entry.date).toLocaleDateString('cs-CZ')}</td>
-                                <td className="p-3 whitespace-nowrap">{entry.startTime} - {entry.endTime}</td>
-                                <td className="p-3">{entry.activity}</td>
-                                <td className="p-3">{entry.description}</td>
-                                <td className="p-3 text-right font-semibold">{calculateDuration(entry.startTime, entry.endTime).toFixed(2)} h</td>
+                                {/* Fix: extract date from start_time */}
+                                <td className="p-3 whitespace-nowrap">{new Date(entry.start_time).toLocaleDateString('cs-CZ')}</td>
+                                {/* Fix: extract time from start_time and end_time */}
+                                <td className="p-3 whitespace-nowrap">{entry.start_time.substring(11, 16)} - {entry.end_time.substring(11, 16)}</td>
+                                {/* Fix: Use entry_type and notes */}
+                                <td className="p-3">{entry.entry_type}</td>
+                                <td className="p-3">{entry.notes || ''}</td>
+                                <td className="p-3 text-right font-semibold">{entry.duration_hours.toFixed(2)} h</td>
                             </tr>
                         ))}
                          <tr className="bg-slate-200 font-bold">

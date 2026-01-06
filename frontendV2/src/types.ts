@@ -1,5 +1,5 @@
+
 import { LoginIn } from './schemas/auth';
-// FIX: Removed self-import which was causing declaration conflicts. All types are defined below and do not need to be imported from the same file.
 
 // Enums
 export enum RoleEnum {
@@ -32,11 +32,11 @@ export enum TimeLogStatus {
 }
 
 export enum TimeLogEntryType {
-    Work = "work",
-    Vacation = "vacation",
-    SickDay = "sick_day",
-    Doctor = "doctor",
-    UnpaidLeave = "unpaid_leave",
+    Work = "WORK",
+    Vacation = "VACATION",
+    SickDay = "SICK_DAY",
+    Doctor = "DOCTOR",
+    UnpaidLeave = "UNPAID_LEAVE",
 }
 
 export enum AuditLogAction {
@@ -44,28 +44,32 @@ export enum AuditLogAction {
     Updated = "updated",
     Deleted = "deleted",
     QuantityAdjusted = "quantity_adjusted",
+    LocationPlaced = "location_placed",
+    LocationWithdrawn = "location_withdrawn",
+    LocationTransferred = "location_transferred",
     WriteOff = "write_off",
+    PickingFulfilled = "picking_fulfilled"
 }
 
-// NEW: Enums for notification triggers
 export enum TriggerType {
-    InventoryLowStock = 'inventory_low_stock',
-    WorkOrderBudget = 'work_order_budget',
+    WorkOrderBudget = 'WORK_ORDER_BUDGET',
+    InventoryLowStock = 'INVENTORY_LOW_STOCK',
 }
 
 export enum TriggerCondition {
-    PercentageReached = 'percentage_reached',
+    PercentageReached = 'PERCENTAGE_REACHED',
+    QuantityBelow = 'QUANTITY_BELOW'
 }
 
 export enum PickingOrderStatus {
-    New = 'new',
-    InProgress = 'in_progress',
-    Completed = 'completed',
-    Cancelled = 'cancelled',
+    New = 'NEW',
+    InProgress = 'IN_PROGRESS',
+    Completed = 'COMPLETED',
+    Cancelled = 'CANCELLED',
 }
 
 
-// Backend Schemas (from OpenAPI)
+// Backend Schemas
 export interface CompanyOut {
     id: number;
     name: string;
@@ -105,41 +109,32 @@ export interface CategoryOut {
     children: CategoryOut[];
 }
 
-// NEW: Location type from API docs
 export interface LocationOut {
     id: number;
     name: string;
     description?: string;
-}
-
-// NEW: Location type with permissions
-export interface LocationWithPermissions extends LocationOut {
     authorized_users: UserOut[];
 }
 
-
-// NEW: Link between item and location with quantity
-export interface ItemLocationQuantity {
+export interface ItemLocationStockOut {
     quantity: number;
     location: LocationOut;
 }
-
 
 export interface InventoryItemOut {
     id: number;
     name: string;
     sku: string;
     description?: string;
-    total_quantity: number; // UPDATED from 'quantity'
-    locations: ItemLocationQuantity[]; // NEW
-    category_id?: number;
+    total_quantity: number;
+    locations: ItemLocationStockOut[];
+    category_ids: number[];
+    categories: CategoryOut[];
     ean?: string;
     image_url?: string;
     price?: number;
     vat_rate?: number;
     company_id: number;
-    category?: CategoryOut;
-    // NEW from API docs for stock monitoring
     is_monitored_for_stock: boolean;
     low_stock_threshold: number | null;
 }
@@ -186,102 +181,38 @@ export interface WorkOrderOut {
     client_id?: number;
     company_id: number;
     status: string;
-    tasks: TaskPreviewOut[]; // Corrected: List view provides previews, not full tasks.
+    tasks: TaskPreviewOut[];
     client?: ClientOut;
     budget_hours?: number;
-}
-
-export interface TaskPreviewForTimeLog {
-    id: number;
-    name: string;
-}
-
-// NEW from spec: Data for creating a new task directly from a time log.
-export interface NewTaskData {
-    work_order_id: number;
-    name: string;
+    // Added to support history reporting
+    serviceReports?: ServiceReport[];
 }
 
 export interface TimeLogOut {
     id: number;
-    start_time: string; // ISO datetime string
-    end_time: string;   // ISO datetime string
+    start_time: string;
+    end_time: string;
     entry_type: TimeLogEntryType;
     notes?: string;
     status: TimeLogStatus;
     user: UserOut;
-
-    // Work-specific fields (optional)
     work_type_id?: number;
     task_id?: number;
-    break_duration_minutes?: number;
-    is_overtime?: boolean;
     work_type?: WorkTypeOut;
-    task?: TaskPreviewForTimeLog;
-    new_task?: NewTaskData | null; // From API spec
-    
-    duration_hours: number; // Computed property from backend
-}
-
-// NEW from spec: Input types for creating/updating time logs
-export interface TimeLogCreateIn {
-    start_time: string;
-    end_time: string;
-    entry_type: TimeLogEntryType;
-    notes?: string | null;
-    work_type_id?: number | null;
-    task_id?: number | null;
-    new_task?: NewTaskData | null;
+    task?: { id: number; name: string };
+    duration_hours: number;
+    // Added missing properties
     break_duration_minutes?: number;
     is_overtime?: boolean;
-}
-
-export type TimeLogUpdateIn = TimeLogCreateIn;
-
-
-export interface MemberUserOut {
-    id: number;
-    email: string;
-}
-
-export interface MemberOut {
-    user: MemberUserOut;
-    role: RoleEnum;
-}
-
-export interface AuditLogItemPreview {
-    id: number;
-    name: string;
-    sku: string;
 }
 
 export interface AuditLogOut {
     id: number;
-    timestamp: string; // ISO datetime string
+    timestamp: string;
     action: AuditLogAction;
     details: string | null;
     user: UserOut | null;
-    inventory_item: AuditLogItemPreview | null;
-}
-
-// NEW: Types for the billing report endpoint
-export interface BillingReportTimeLogOut {
-    work_date: string; // date string
-    hours: number;
-    rate: number;
-    total_price: number;
-    work_type_name: string;
-    user_email: string;
-    task_name: string;
-}
-
-export interface BillingReportUsedItemOut {
-    item_name: string;
-    sku: string;
-    quantity: number;
-    price: number | null; // price per unit
-    total_price: number | null;
-    task_name: string;
+    inventory_item: UsedItemInventoryPreviewOut | null;
 }
 
 export interface BillingReportOut {
@@ -291,115 +222,41 @@ export interface BillingReportOut {
     total_price_work: number;
     total_price_inventory: number;
     grand_total: number;
-    time_logs: BillingReportTimeLogOut[];
-    used_items: BillingReportUsedItemOut[];
+    time_logs: any[];
+    used_items: any[];
 }
 
-// NEW from spec for periodic billing
-export interface ClientBillingReportOut {
+export interface ClientBillingReportOut extends Omit<BillingReportOut, 'work_order_name'> {
     client_name: string;
-    total_hours: number;
-    total_price_work: number;
-    total_price_inventory: number;
-    grand_total: number;
-    time_logs: BillingReportTimeLogOut[];
-    used_items: BillingReportUsedItemOut[];
 }
 
-// NEW: Total hours for a single task
-export interface TaskTotalHoursOut {
-    task_id: number;
-    total_hours: number;
-}
-
-
-// NEW: Recommended structure for service report data from backend
 export interface ServiceReportDataOut {
     work_order: WorkOrderOut;
     task: TaskOut;
 }
 
-// NEW: Types for SMTP settings
-export interface SmtpNotificationSettings {
-    on_invite_created: boolean;
-    on_budget_alert: boolean;
-
-    on_low_stock_alert: boolean;
-}
-
 export interface SmtpSettingsOut {
     id: number;
+    is_enabled: boolean;
     smtp_host: string | null;
     smtp_port: number | null;
     smtp_user: string | null;
     sender_email: string | null;
     password_is_set: boolean;
-    security_protocol: 'none' | 'tls' | 'ssl';
-    notification_settings: SmtpNotificationSettings;
+    security_protocol: 'NONE' | 'TLS' | 'SSL';
+    notification_settings: any;
 }
 
-export interface SmtpSettingsIn {
-    is_enabled?: boolean;
-    smtp_host?: string | null;
-    smtp_port?: number | null;
-    smtp_user?: string | null;
-    smtp_password?: string; // Optional on update
-    sender_email?: string | null;
-    security_protocol?: 'none' | 'tls' | 'ssl';
-    notification_settings?: SmtpNotificationSettings;
-}
-
-
-// NEW: Types for Notification Triggers
 export interface TriggerOut {
     id: number;
     is_active: boolean;
     trigger_type: TriggerType;
-    condition: TriggerCondition | null;
-    threshold_value: number | null;
+    condition: TriggerCondition;
+    threshold_value: number;
     recipient_emails: string[];
+    company_id: number;
 }
 
-export interface TriggerCreateIn {
-    is_active: boolean;
-    trigger_type: TriggerType;
-    condition?: TriggerCondition | null;
-    threshold_value?: number | null;
-    recipient_emails: string[];
-}
-
-export type TriggerUpdateIn = Partial<TriggerCreateIn>;
-
-// NEW: For the location inventory endpoint
-export interface LocationInventoryItemPreview {
-  id: number;
-  name: string;
-  sku: string;
-  image_url: string | null;
-  price: number | null;
-}
-
-export interface LocationInventoryItem {
-  quantity: number;
-  inventory_item: LocationInventoryItemPreview;
-}
-
-// NEW: For direct assign inventory endpoint
-export interface DirectAssignItemIn {
-    inventory_item_id: number;
-    quantity: number;
-    details?: string;
-}
-
-// NEW: For stock write-off
-export interface WriteOffStockIn {
-    inventory_item_id: number;
-    location_id: number;
-    quantity: number;
-    details: string;
-}
-
-// NEW: Picking Orders
 export interface PickingOrderItemOut {
     id: number;
     requested_quantity: number;
@@ -413,12 +270,92 @@ export interface PickingOrderOut {
     status: PickingOrderStatus;
     notes: string | null;
     created_at: string;
-    updated_at: string;
+    requester: UserOut;
+    // Added picker property
+    picker?: UserOut | null;
     source_location: LocationOut | null;
     destination_location: LocationOut;
-    requester: UserOut;
-    picker: UserOut | null;
     items: PickingOrderItemOut[];
+}
+
+// Missing Interfaces and Type Aliases
+export interface Membership {
+    user: UserOut;
+    role: RoleEnum;
+    // Added for payroll/payslip functionality
+    hourlyRate?: number;
+    vacationDaysTotal?: number;
+    vacationDaysUsed?: number;
+}
+export type MemberOut = Membership;
+
+export type WorkType = WorkTypeOut;
+export type TimeLog = TimeLogOut;
+
+export interface VatSettings {
+    laborRate: number;
+    materialRate: number;
+}
+
+export type Employee = Membership;
+export type TimeEntry = TimeLogOut;
+
+export interface PayrollSettings {
+    overtimeRate: number;
+    overtimeThreshold: number;
+    weekendRate: number;
+    holidayRate: number;
+    nightRate: number;
+}
+
+export type Job = WorkOrderOut;
+export type Customer = ClientOut;
+
+export interface DirectAssignItemIn {
+    inventory_item_id: number;
+    quantity: number;
+    details?: string;
+}
+
+export interface TimeLogCreateIn {
+    entry_type: TimeLogEntryType;
+    start_time: string;
+    end_time: string;
+    notes: string | null;
+    task_id?: number | null;
+    new_task?: {
+        work_order_id: number;
+        name: string;
+    } | null;
+    work_type_id?: number;
+    break_duration_minutes?: number;
+    is_overtime?: boolean;
+}
+
+export interface SmtpSettingsIn {
+    is_enabled: boolean;
+    smtp_host?: string | null;
+    smtp_port?: number | null;
+    smtp_user?: string | null;
+    smtp_password?: string;
+    sender_email?: string | null;
+    security_protocol?: 'NONE' | 'TLS' | 'SSL';
+    notification_settings?: any;
+}
+
+export interface TriggerCreateIn {
+    is_active: boolean;
+    trigger_type: TriggerType;
+    condition?: TriggerCondition;
+    threshold_value?: number;
+    recipient_emails: string[];
+}
+
+export interface TriggerUpdateIn extends Partial<TriggerCreateIn> {}
+
+export interface LocationInventoryItem {
+    inventory_item: InventoryItemOut;
+    quantity: number;
 }
 
 export interface PickingOrderItemIn {
@@ -428,7 +365,7 @@ export interface PickingOrderItemIn {
 }
 
 export interface PickingOrderCreateIn {
-    source_location_id?: number | null;
+    source_location_id: number | null;
     destination_location_id: number;
     notes?: string;
     items: PickingOrderItemIn[];
@@ -437,31 +374,28 @@ export interface PickingOrderCreateIn {
 export interface PickingOrderFulfillItemIn {
     picking_order_item_id: number;
     picked_quantity: number;
-    inventory_item_id?: number; // For linking free-text items
-    source_location_id: number; // NEW from backend changes
+    source_location_id: number;
+    inventory_item_id?: number;
 }
 
 export interface PickingOrderFulfillIn {
     items: PickingOrderFulfillItemIn[];
 }
 
+export interface TaskTotalHoursOut {
+    total_hours: number;
+}
 
-// Frontend-specific types
+// Helper types for forms
 export type Company = CompanyOut;
 export type User = UserOut;
-export type Customer = ClientOut;
+export type Client = ClientOut;
 export type WorkOrder = WorkOrderOut;
 export type Task = TaskOut;
-export type Client = ClientOut;
-export type Membership = MemberOut;
-export type TimeLog = TimeLogOut;
-export type WorkType = WorkTypeOut;
 export type InventoryItem = InventoryItemOut;
 export type Category = CategoryOut;
-export type WorkRate = WorkType; // Alias
-export type InventoryMovement = AuditLogOut;
-export type Location = LocationOut; // NEW
-export type PickingOrder = PickingOrderOut; // NEW
+export type Location = LocationOut;
+export type PickingOrder = PickingOrderOut;
 
 export interface Photo {
     id: string;
@@ -488,55 +422,13 @@ export interface ServiceReport {
     timeLogs: TimeLogOut[];
 }
 
-export interface Job {
-    id: number;
-    title: string;
-    description: string;
-    serviceReports: ServiceReport[];
-}
-
-export interface TimeEntry {
-    id: string;
-    employeeId: string;
-    jobId: number;
-    date: string;
-    startTime: string;
-    endTime: string;
-    description: string;
-    activity: string;
-    isBillable: boolean;
-    workRateId?: string;
-}
-
-export interface VatSettings {
-    laborRate: number;
-    materialRate: number;
-}
-
-export interface Employee {
-    id: string;
-    name: string;
-    role: string;
-    hourlyRate: number;
-    vacationDaysTotal: number;
-    vacationDaysUsed: number;
-}
-
-export interface PayrollSettings {
-    overtimeRate: number;
-    overtimeThreshold: number;
-    weekendRate: number;
-    holidayRate: number;
-    nightRate: number;
-}
-
 export interface TemplateDayEntry {
-    id: string; // for React keys
+    id: string;
     workOrderId: string;
     taskId: string;
     workTypeId: string;
-    startTime: string; // HH:mm
-    endTime: string; // HH:mm
+    startTime: string;
+    endTime: string;
     breakMinutes: number;
     isOvertime: boolean;
     notes: string;

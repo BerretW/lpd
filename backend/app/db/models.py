@@ -121,7 +121,7 @@ class InventoryCategory(Base):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_categories.id"))
     parent: Mapped["InventoryCategory"] = relationship(remote_side=[id], back_populates="children")
-    children: Mapped[list["InventoryCategory"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
+    children = relationship("InventoryCategory", lazy="selectin")
     __table_args__ = (UniqueConstraint("company_id", "name", "parent_id", name="uq_category_company_name_parent"),)
 
 class InventoryItem(Base):
@@ -142,9 +142,10 @@ class InventoryItem(Base):
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, onupdate=now_utc)
     
     # Změna: M:N vztah místo ForeignKey
-    categories: Mapped[list["InventoryCategory"]] = relationship(
-        secondary=item_category_association,
-        backref="items"
+    categories = relationship(
+        "InventoryCategory", 
+        secondary=item_category_association, 
+        lazy="selectin"  # <--- Tato změna zajistí automatické načtení
     )
     
     locations: Mapped[list["ItemLocationStock"]] = relationship(back_populates="inventory_item", cascade="all, delete-orphan")

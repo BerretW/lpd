@@ -362,7 +362,7 @@ const PickingOrders: React.FC<PickingOrdersProps> = ({ companyId }) => {
             : orders;
 
         return filtered.reduce((acc, order) => {
-            const group: 'uncompleted' | 'completed' = (order.status === 'completed' || order.status === 'cancelled')
+            const group: 'uncompleted' | 'completed' = (order.status === PickingOrderStatus.Completed || order.status === PickingOrderStatus.Cancelled)
                 ? 'completed'
                 : 'uncompleted';
             (acc[group] = acc[group] || []).push(order);
@@ -449,7 +449,7 @@ const PickingOrders: React.FC<PickingOrdersProps> = ({ companyId }) => {
                                             <p className="text-xs text-slate-500">{t('pickingOrders.requestedBy')}: {order.requester.email}</p>
                                             <div className="flex justify-end mt-4 space-x-2">
                                                 <Button variant="secondary" onClick={() => handleOpenModal('DETAIL', order)}>{t('pickingOrders.detail')}</Button>
-                                                {isAdmin && (order.status === 'new' || order.status === 'in_progress') && <Button onClick={() => handleOpenModal('FULFILL', order)}>{t('pickingOrders.fulfill')}</Button>}
+                                                {isAdmin && (order.status === PickingOrderStatus.New || order.status === PickingOrderStatus.InProgress) && <Button onClick={() => handleOpenModal('FULFILL', order)}>{t('pickingOrders.fulfill')}</Button>}
                                             </div>
                                         </Card>
                                     ))}
