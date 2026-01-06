@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: appdb
+      MYSQL_DATABASE: database
       MYSQL_PASSWORD: userpassword
     # ports: ["3306:3306"] # Zakomentuj pro produkci/izolaci
     volumes:
@@ -18,7 +18,7 @@ services:
     container_name: appartus_api
     env_file: ./backend/.env
     environment:
-      - DATABASE_URL=mysql+asyncmy://root:rootpassword@db:3306/appdb
+      - DATABASE_URL=mysql+asyncmy://root:rootpassword@db:3306/database
     volumes:
       - ./backend:/app
     # FastAPI běží na 8000 uvnitř sítě, zvenčí není vidět

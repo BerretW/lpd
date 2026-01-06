@@ -21,11 +21,12 @@ location_permissions = Table(
 )
 
 class RoleEnum(str, Enum):
-    owner = "owner"
+    owner = "owner"     # Zde v SQL máš malá písmena, to je OK
     admin = "admin"
     member = "member"
 
 class AuditLogAction(str, Enum):
+    # V SQL máš malá písmena, ponechej takto
     created = "created"
     updated = "updated"
     deleted = "deleted"
@@ -42,25 +43,29 @@ class TimeLogStatus(str, Enum):
     rejected = "rejected"
 
 class TimeLogEntryType(str, Enum):
-    WORK = "work"
-    VACATION = "vacation"
-    SICK_DAY = "sick_day"
-    DOCTOR = "doctor"
-    UNPAID_LEAVE = "unpaid_leave"
+    # POZOR: V SQL máš 'WORK', 'VACATION' atd.
+    WORK = "WORK"
+    VACATION = "VACATION"
+    SICK_DAY = "SICK_DAY"
+    DOCTOR = "DOCTOR"
+    UNPAID_LEAVE = "UNPAID_LEAVE"
 
 class TriggerType(str, Enum):
-    WORK_ORDER_BUDGET = "work_order_budget"
-    INVENTORY_LOW_STOCK = "inventory_low_stock"
+    # POZOR: V SQL máš VELKÝMI
+    WORK_ORDER_BUDGET = "WORK_ORDER_BUDGET"
+    INVENTORY_LOW_STOCK = "INVENTORY_LOW_STOCK"
 
 class TriggerCondition(str, Enum):
-    PERCENTAGE_REACHED = "percentage_reached"
-    QUANTITY_BELOW = "quantity_below"
+    # V SQL máš VELKÝMI
+    PERCENTAGE_REACHED = "PERCENTAGE_REACHED"
+    QUANTITY_BELOW = "QUANTITY_BELOW"
 
 class PickingOrderStatus(str, Enum):
-    NEW = "new"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    # POZOR: V SQL máš VELKÝMI
+    NEW = "NEW"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
 
 
 class User(Base):
@@ -256,9 +261,10 @@ class UsedInventoryItem(Base):
     from_location: Mapped["Location"] = relationship()
 
 class SecurityProtocolEnum(str, Enum):
-    NONE = "none"
-    TLS = "tls"
-    SSL = "ssl"
+    # POZOR: V SQL máš VELKÝMI
+    NONE = "NONE"
+    TLS = "TLS"
+    SSL = "SSL"
 
 class CompanySmtpSettings(Base):
     __tablename__ = "company_smtp_settings"
@@ -290,7 +296,7 @@ class PickingOrder(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     requester_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    source_location_id: Mapped[Optional[int]] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), index=True)
+    source_location_id: Mapped[Optional[int]] = mapped_column(ForeignKey("locations.id"), nullable=True)
     destination_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), index=True)
     status: Mapped[PickingOrderStatus] = mapped_column(SAEnum(PickingOrderStatus), default=PickingOrderStatus.NEW, index=True)
     notes: Mapped[Optional[str]] = mapped_column(Text)

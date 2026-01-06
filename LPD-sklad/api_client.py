@@ -12,28 +12,36 @@ class ApiClient:
         self.user_email: Optional[str] = None
 
     def login(self, email: str, password: str) -> bool:
-        """Pokusí se přihlásit a uloží token a company_id."""
         try:
+            print(f"Pokus o přihlášení na: {API_BASE_URL}/auth/login") # LOG
             payload = {"username": email, "password": password}
-            response = requests.post(f"{API_BASE_URL}/auth/login", data=payload)
+            
+            # PŘIDÁN TIMEOUT 5 SEKUND
+            response = requests.post(f"{API_BASE_URL}/auth/login", data=payload, timeout=5)
 
             if response.status_code == 200:
                 self._token = response.json()["access_token"]
-                decoded_token = jwt.decode(self._token, options={"verify_signature": False})
+                # PŘIDÁNY ALGORITMY (některé verze pyjwt to vyžadují i bez ověření)
+                decoded_token = jwt.decode(self._token, options={"verify_signature": False}, algorithms=["HS256"])
+                
+                print(f"Token dekódován: {decoded_token}") # LOG
                 
                 tenants = decoded_token.get("tenants")
                 if not tenants:
-                    print("Chyba: Token neobsahuje informace o firmě (tenants).")
+                    print("Chyba: Token neobsahuje firmy.")
                     return False
                 
                 self.company_id = tenants[0]
                 self.user_email = email
                 return True
             else:
-                print(f"Chyba přihlášení: {response.status_code} - {response.text}")
+                print(f"Server vrátil chybu: {response.status_code}")
                 return False
-        except requests.exceptions.RequestException as e:
-            print(f"Chyba připojení k API: {e}")
+        except requests.exceptions.Timeout:
+            print("Chyba: Server neodpovídá (timeout).")
+            return False
+        except Exception as e:
+            print(f"KRITICKÁ CHYBA PŘI PŘIHLÁŠENÍ: {str(e)}") # Tohle uvidíte v konzoli
             return False
 
     def try_login_with_token(self, token: str) -> bool:
