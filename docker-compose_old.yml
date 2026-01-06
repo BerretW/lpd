@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: appartus_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: database
+      MYSQL_PASSWORD: userpassword
+    # ports: ["3306:3306"] # Zakomentuj pro produkci/izolaci
+    volumes:
+      - db_data:/var/lib/mysql
+
+  api:
+    build: ./backend
+    container_name: appartus_api
+    env_file: ./backend/.env
+    environment:
+      - DATABASE_URL=mysql+asyncmy://root:rootpassword@db:3306/database
+    volumes:
+      - ./backend:/app
+    # FastAPI běží na 8000 uvnitř sítě, zvenčí není vidět
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: appartus_web
+    ports:
+      - "80:5000" # Jediný otevřený port do světa
+    environment:
+      - BACKEND_URL=http://api:8000
+      - FLASK_SECRET=nejake-tajne-heslo-pro-session
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  db_data:

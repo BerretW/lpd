@@ -28,15 +28,12 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
-    container_name: appartus_web
+    build: ./frontendV2   # Změna na novou složku
+    container_name: appartus_web_v2
     ports:
-      - "80:5000" # Jediný otevřený port do světa
+      - "80:80"           # Nginx běží na portu 80
     environment:
       - BACKEND_URL=http://api:8000
-      - FLASK_SECRET=nejake-tajne-heslo-pro-session
-    volumes:
-      - ./frontend:/app
     depends_on:
       - api
     restart: unless-stopped

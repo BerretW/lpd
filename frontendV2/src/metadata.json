@@ -1,0 +1,7 @@
+{
+  "name": "ProfiTechnik OS",
+  "description": "Komplexní aplikace pro správu firmy specializující se na instalaci slaboproudých a elektrických zařízení. Zahrnuje docházku zaměstnanců, správu zakázek, evidenci skladu, generování servisních listů s fotodokumentací a podpisem zákazníka a plánování akcí.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
