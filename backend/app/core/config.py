@@ -7,7 +7,7 @@ class Settings:
     JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-secret-change-me")
     JWT_ALG: str = "HS256"
     JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
-    DEFAULT_USER_EMAIL: str = os.getenv("DEFAULT_USER_EMAIL", "admin@local")
+    DEFAULT_USER_EMAIL: str = os.getenv("DEFAULT_USER_EMAIL", "admin@local.cz")
     DEFAULT_USER_PASSWORD: str = os.getenv("DEFAULT_USER_PASSWORD", "admin123")
     # --- OPRAVENÝ ŘÁDEK ---
     # Klíč nyní pouze čteme z prostředí. Pokud není nastaven, os.getenv vrátí None.
