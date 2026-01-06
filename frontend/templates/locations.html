@@ -30,7 +30,9 @@
                 </p>
             </div>
             <div class="card-footer bg-transparent border-top-0 pb-3">
-                <a href="#" class="btn btn-outline-primary btn-sm w-100">Otevřít sklad</a>
+                <a href="{{ url_for('location_detail', location_id=loc.id) }}" class="btn btn-outline-primary btn-sm w-100">
+    Otevřít sklad
+</a>
             </div>
         </div>
     </div>

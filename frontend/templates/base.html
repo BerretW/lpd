@@ -1,51 +1,61 @@
 <!DOCTYPE html>
 <html lang="cs">
+
 <head>
     <meta charset="UTF-8">
     <title>Appartus - Sklad</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
+
 <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
         <div class="container">
             <a class="navbar-brand" href="/">Appartus</a>
             <div class="navbar-nav ms-auto">
-    {% if session.get('token') %}
-        <!-- Přepínač firem -->
-        <div class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle text-info" href="#" data-bs-toggle="dropdown">
-                Firma ID: {{ session.get('active_company_id', 'Vyberte...') }}
-            </a>
-            <ul class="dropdown-menu">
-                {% for tid in user_tenants %}
-                    <li><a class="dropdown-item" href="{{ url_for('switch_company', company_id=tid) }}">Firma {{ tid }}</a></li>
-                {% endfor %}
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item text-success" href="{{ url_for('create_company') }}">+ Nová firma</a></li>
-            </ul>
-        </div>
+                {% if session.get('token') %}
+                <!-- Přepínač firem -->
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle text-info" href="#" data-bs-toggle="dropdown">
+                        Firma ID: {{ session.get('active_company_id', 'Vyberte...') }}
+                    </a>
+                    <ul class="dropdown-menu">
+                        {% for tid in user_tenants %}
+                        <li><a class="dropdown-item" href="{{ url_for('switch_company', company_id=tid) }}">Firma {{ tid
+                                }}</a></li>
+                        {% endfor %}
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li><a class="dropdown-item text-success" href="{{ url_for('create_company') }}">+ Nová
+                                firma</a></li>
+                    </ul>
+                </div>
 
-        <a class="nav-item nav-link" href="{{ url_for('profile') }}">Profil</a>
-        <a class="nav-item nav-link" href="{{ url_for('locations') }}">Sklady</a>
-        <a class="nav-item nav-link text-danger" href="{{ url_for('logout') }}">Odhlásit</a>
-    {% else %}
-        <a class="nav-item nav-link" href="{{ url_for('login') }}">Přihlásit</a>
-    {% endif %}
-</div>
+                <a class="nav-item nav-link" href="{{ url_for('profile') }}">Profil</a>
+                <a class="nav-item nav-link" href="{{ url_for('locations') }}">Sklady</a>
+                <a class="nav-item nav-link" href="{{ url_for('inventory') }}">Zásoby</a>
+                <a class="nav-item nav-link" href="{{ url_for('work_orders') }}">Zakázky</a>
+                <a class="nav-item nav-link" href="{{ url_for('picking_orders') }}">Výdejky</a>
+                <a class="nav-item nav-link text-danger" href="{{ url_for('logout') }}">Odhlásit</a>
+                {% else %}
+                <a class="nav-item nav-link" href="{{ url_for('login') }}">Přihlásit</a>
+                {% endif %}
+            </div>
         </div>
     </nav>
 
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
         {% endwith %}
-        
+
         {% block content %}{% endblock %}
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
+
 </html>

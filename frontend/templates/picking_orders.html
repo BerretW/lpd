@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Požadavky na materiál (Výdejky)</h2>
+    <!-- Tlačítko pro budoucí vytvoření nového požadavku -->
+    <button class="btn btn-primary btn-sm">+ Nový požadavek</button>
+</div>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>Stav</th>
+                    <th>Žadatel</th>
+                    <th>Trasa (Odkud -> Kam)</th>
+                    <th>Položek</th>
+                    <th>Vytvořeno</th>
+                    <th class="text-end">Akce</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td><span class="fw-bold text-muted">#{{ order.id }}</span></td>
+                    <td>
+                        {% if order.status == 'NEW' %}
+                            <span class="badge bg-info text-dark">Nová</span>
+                        {% elif order.status == 'IN_PROGRESS' %}
+                            <span class="badge bg-warning text-dark">Probíhá</span>
+                        {% elif order.status == 'COMPLETED' %}
+                            <span class="badge bg-success">Hotovo</span>
+                        {% elif order.status == 'CANCELLED' %}
+                            <span class="badge bg-secondary">Zrušeno</span>
+                        {% else %}
+                            <span class="badge bg-light text-dark">{{ order.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <small>{{ order.requester.email }}</small>
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <span class="text-truncate" style="max-width: 150px;">
+                                {{ order.source_location.name if order.source_location else "Nespecifikováno" }}
+                            </span>
+                            <i class="bi bi-arrow-right mx-2 text-muted">→</i>
+                            <span class="text-truncate fw-bold" style="max-width: 150px;">
+                                {{ order.destination_location.name }}
+                            </span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge rounded-pill bg-light text-dark border">
+                            {{ order.items|length }}
+                        </span>
+                    </td>
+                    <td>
+                        <small class="text-muted">{{ order.created_at[:10] }}</small>
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-group">
+                            <a href="#" class="btn btn-sm btn-outline-primary">Detail</a>
+                            {% if order.status != 'COMPLETED' and order.status != 'CANCELLED' %}
+                                <a href="#" class="btn btn-sm btn-success">Vychystat</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-5">
+                        <div class="text-muted">
+                            <i class="bi bi-clipboard-x" style="font-size: 2rem;"></i>
+                            <p class="mt-2">Žádné požadavky na materiál nebyly nalezeny.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="mt-4">
+    <div class="alert alert-info shadow-sm border-0">
+        <div class="d-flex">
+            <div class="me-3">
+                <i class="bi bi-info-circle-fill" style="font-size: 1.5rem;"></i>
+            </div>
+            <div>
+                <h6 class="alert-heading fw-bold">Tip pro skladníka</h6>
+                <p class="mb-0 small">
+                    Sekce "Výdejky" slouží k přípravě materiálu pro techniky. Jakmile je požadavek <strong>Vychystán</strong>, systém automaticky provede skladový přesun mezi lokacemi a upraví stav zásob.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

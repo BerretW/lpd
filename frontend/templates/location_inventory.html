@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('locations') }}">Sklady</a></li>
+    <li class="breadcrumb-item active">{{ location.name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>{{ location.name }}</h2>
+        <p class="text-muted">{{ location.description if location.description else "Bez popisu" }}</p>
+    </div>
+    <span class="badge bg-primary fs-6">{{ items|length }} položek skladem</span>
+</div>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Název položky</th>
+                    <th>SKU / Kód</th>
+                    <th class="text-center">Množství</th>
+                    <th class="text-end">Akce</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in items %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ entry.inventory_item.name }}</div>
+                    </td>
+                    <td><code class="text-primary">{{ entry.inventory_item.sku }}</code></td>
+                    <td class="text-center">
+                        <span class="badge bg-success fs-6">{{ entry.quantity }} ks</span>
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('inventory_detail', item_id=entry.inventory_item.id) }}" class="btn btn-sm btn-outline-secondary">
+                            Karta položky
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center py-5 text-muted">
+                        Tento sklad je prázdný.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

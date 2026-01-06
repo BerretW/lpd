@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Aktivní zakázky</h2>
+<div class="row mt-4">
+    {% for order in orders %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 shadow-sm border-start border-4 {% if order.status == 'new' %}border-info{% else %}border-warning{% endif %}">
+            <div class="card-body">
+                <h5 class="card-title">{{ order.name }}</h5>
+                <h6 class="card-subtitle mb-2 text-muted">{{ order.client.name if order.client else 'Bez klienta' }}</h6>
+                <p class="card-text small">{{ order.description[:100] }}...</p>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <span class="badge bg-light text-dark border">{{ order.status }}</span>
+                    <span class="text-muted small">{{ order.tasks|length }} úkolů</span>
+                </div>
+            </div>
+            <div class="card-footer bg-white border-top-0">
+                <button class="btn btn-sm btn-primary w-100">Zobrazit úkoly</button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
