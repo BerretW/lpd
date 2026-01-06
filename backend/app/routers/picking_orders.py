@@ -29,17 +29,12 @@ async def get_picking_order_or_404(db: AsyncSession, company_id: int, order_id: 
             selectinload(PickingOrder.requester),
             selectinload(PickingOrder.source_location).selectinload(Location.authorized_users),
             selectinload(PickingOrder.destination_location).selectinload(Location.authorized_users),
-            # Přidáváme finální, nejhlubší úroveň vnoření
             selectinload(PickingOrder.items)
                 .selectinload(PickingOrderItem.inventory_item)
-                .selectinload(InventoryItem.locations)
-                .selectinload(ItemLocationStock.location)
-                .selectinload(Location.authorized_users), # TATO ŘÁDKA JE NOVÁ
+                .selectinload(ItemLocationStock.location),
             selectinload(PickingOrder.items)
                 .selectinload(PickingOrderItem.inventory_item)
-                .selectinload(InventoryItem.category)
-                .selectinload(InventoryCategory.children)
-                .selectinload(InventoryCategory.children)
+                .selectinload(InventoryItem.categories)  # <--- OPRAVENO Z category
                 .selectinload(InventoryCategory.children)
         )
     )
@@ -101,7 +96,7 @@ async def list_picking_orders(
                 .selectinload(Location.authorized_users), # TATO ŘÁDKA JE NOVÁ
             selectinload(PickingOrder.items)
                 .selectinload(PickingOrderItem.inventory_item)
-                .selectinload(InventoryItem.category)
+                .selectinload(InventoryItem.categories)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children)
                 .selectinload(InventoryCategory.children)

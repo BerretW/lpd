@@ -4,7 +4,6 @@ from typing import Optional, List
 from .category import CategoryOut
 from .location import LocationOut
 
-# --- NOVÉ SCHÉMA PRO ZOBRAZENÍ STAVU NA LOKACI ---
 class ItemLocationStockOut(BaseModel):
     quantity: int
     location: LocationOut
@@ -14,7 +13,8 @@ class InventoryItemBase(BaseModel):
     name: str
     sku: str
     description: Optional[str] = None
-    category_id: Optional[int] = None
+    # Změna: Nyní přijímáme seznam ID kategorií
+    category_ids: List[int] = []
     ean: Optional[str] = None
     image_url: Optional[str] = None
     price: Optional[float] = None
@@ -29,7 +29,8 @@ class InventoryItemUpdateIn(BaseModel):
     name: Optional[str] = None
     sku: Optional[str] = None
     description: Optional[str] = None
-    category_id: Optional[int] = None
+    # Změna: Aktualizace seznamu kategorií
+    category_ids: Optional[List[int]] = None
     ean: Optional[str] = None
     price: Optional[float] = None
     vat_rate: Optional[float] = None
@@ -39,7 +40,8 @@ class InventoryItemUpdateIn(BaseModel):
 class InventoryItemOut(InventoryItemBase):
     id: int
     company_id: int
-    category: Optional[CategoryOut] = None
+    # Změna: Vracíme seznam kategorií
+    categories: List[CategoryOut] = []
     locations: List[ItemLocationStockOut] = []
 
     @computed_field
@@ -49,7 +51,6 @@ class InventoryItemOut(InventoryItemBase):
     
     model_config = ConfigDict(from_attributes=True)
 
-# --- SCHÉMATA PRO POHYBY ---
 class PlaceStockIn(BaseModel):
     inventory_item_id: int
     location_id: int
@@ -63,12 +64,11 @@ class TransferStockIn(BaseModel):
     quantity: int
     details: Optional[str] = None
 
-# --- NOVÉ SCHÉMA PRO ODPIS ---
 class WriteOffStockIn(BaseModel):
     inventory_item_id: int
     location_id: int
     quantity: int
-    details: str  # Důvod je povinný
+    details: str
 
     @field_validator('quantity')
     def quantity_must_be_positive(cls, v):

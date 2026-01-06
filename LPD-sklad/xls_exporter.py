@@ -2,28 +2,29 @@
 import pandas as pd
 from datetime import datetime
 
+# xls_exporter.py
+
 def export_inventory_to_xls(inventory_data: list, file_path: str):
-    """
-    Vygeneruje XLS soubor s aktuálním stavem skladu (inventurou).
-    """
     if not inventory_data:
         raise ValueError("Seznam položek pro export je prázdný.")
 
-    # Převedeme data na Pandas DataFrame
     df = pd.DataFrame(inventory_data)
 
-    # Vytvoříme sloupec s názvem kategorie pro lepší čitelnost
-    df['category_name'] = df['category'].apply(lambda c: c['name'] if isinstance(c, dict) and c.get('name') else '')
+    # ZMĚNA: Převod seznamu kategorií na jeden řetězec
+    def format_categories(cats):
+        if isinstance(cats, list):
+            return ", ".join([c['name'] for c in cats if isinstance(c, dict)])
+        return ""
 
-    # --- ZMĚNA: Používáme 'total_quantity' místo 'quantity' ---
+    df['category_names'] = df['categories'].apply(format_categories)
+
     df_export = df[[
-        'id', 'name', 'sku', 'ean', 'total_quantity', 'price', 'category_name', 'description'
+        'id', 'name', 'sku', 'ean', 'total_quantity', 'price', 'category_names', 'description'
     ]]
     df_export.columns = [
         'ID Položky', 'Název', 'SKU', 'EAN', 'Celkem kusů', 'Cena', 'Kategorie', 'Popis'
     ]
 
-    # Zápis do XLS souboru
     df_export.to_excel(file_path, index=False, sheet_name='Inventura')
 
 

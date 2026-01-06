@@ -39,11 +39,23 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self.load_initial_data()
         self.statusBar().showMessage(f"Přihlášen jako: {api_client.user_email}")
-
+    def open_automaton(self):
+        from .automaton_dialog import AutomatonDialog
+        dialog = AutomatonDialog(
+            self.api_client, 
+            self.inventory_data, 
+            self.locations, 
+            self.categories_flat, 
+            self
+        )
+        # Spustíme jako modální, po zavření obnovíme data v hlavní tabulce
+        dialog.exec()
+        self.load_inventory_data()
     def _create_actions(self):
         """Vytvoří QAction objekty pro použití v toolbaru."""
         # Správa položek a číselníků
         self.add_item_action = QAction(qta.icon('fa5s.plus-circle'), "Nová položka", self)
+        self.automaton_action = QAction(qta.icon('fa5s.robot'), "Skladový automat", self)
         self.edit_item_action = QAction(qta.icon('fa5s.edit'), "Upravit položku", self)
         self.locations_action = QAction(qta.icon('fa5s.map-marker-alt'), "Správa lokací", self)
         self.categories_action = QAction(qta.icon('fa5s.sitemap'), "Správa kategorií", self)
@@ -86,7 +98,7 @@ class MainWindow(QMainWindow):
         icon_height = self.fontMetrics().height()
         toolbar.setIconSize(QSize(icon_height, icon_height))
         self.addToolBar(toolbar)
-
+        toolbar.addAction(self.automaton_action)
         toolbar.addAction(self.add_item_action)
         toolbar.addAction(self.edit_item_action)
         toolbar.addSeparator()
@@ -195,6 +207,7 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self):
         self.refresh_action.triggered.connect(self.load_initial_data)
+        self.automaton_action.triggered.connect(self.open_automaton)
         self.add_item_action.triggered.connect(self.add_new_item)
         self.edit_item_action.triggered.connect(self.edit_selected_item)
         self.locations_action.triggered.connect(self.manage_locations)
@@ -259,19 +272,24 @@ class MainWindow(QMainWindow):
         self.inventory_table.setRowCount(0)
         self.inventory_table.setRowCount(len(self.inventory_data))
         for row, item in enumerate(self.inventory_data):
-            category = item.get('category')
-            category_name = category.get('name', '') if category else ''
+            # ZMĚNA: Zpracování seznamu kategorií
+            categories = item.get('categories', [])
+            category_names = [c['name'] for c in categories]
+            category_display = ", ".join(category_names)
+            
             price = item.get('price')
             price_str = f"{price:.2f} Kč" if price is not None else "N/A"
+            
             quantity_item = QTableWidgetItem(str(item['total_quantity']))
             quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            
             self.inventory_table.setItem(row, 0, QTableWidgetItem(str(item['id'])))
             self.inventory_table.setItem(row, 1, QTableWidgetItem(item['name']))
             self.inventory_table.setItem(row, 2, QTableWidgetItem(item['sku']))
             self.inventory_table.setItem(row, 3, QTableWidgetItem(item.get('ean', '')))
             self.inventory_table.setItem(row, 4, quantity_item)
             self.inventory_table.setItem(row, 5, QTableWidgetItem(price_str))
-            self.inventory_table.setItem(row, 6, QTableWidgetItem(category_name))
+            self.inventory_table.setItem(row, 6, QTableWidgetItem(category_display))
         self.inventory_table.resizeColumnsToContents()
 
     def update_picking_orders_table(self):

@@ -7,11 +7,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
-# --- PŘIDANÝ IMPORT ---
-from typing import Optional
+from typing import Optional, List
 
 def now_utc():
     return datetime.now(timezone.utc)
+
+# --- ASOCIAČNÍ TABULKY ---
 
 location_permissions = Table(
     "location_permissions",
@@ -20,13 +21,22 @@ location_permissions = Table(
     Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
 )
 
+# Nová tabulka pro vazbu M:N mezi položkami a kategoriemi
+item_category_association = Table(
+    "item_category_association",
+    Base.metadata,
+    Column("item_id", Integer, ForeignKey("inventory_items.id", ondelete="CASCADE"), primary_key=True),
+    Column("category_id", Integer, ForeignKey("inventory_categories.id", ondelete="CASCADE"), primary_key=True),
+)
+
+# --- ENUMERACE ---
+
 class RoleEnum(str, Enum):
-    owner = "owner"     # Zde v SQL máš malá písmena, to je OK
+    owner = "owner"
     admin = "admin"
     member = "member"
 
 class AuditLogAction(str, Enum):
-    # V SQL máš malá písmena, ponechej takto
     created = "created"
     updated = "updated"
     deleted = "deleted"
@@ -43,7 +53,6 @@ class TimeLogStatus(str, Enum):
     rejected = "rejected"
 
 class TimeLogEntryType(str, Enum):
-    # POZOR: V SQL máš 'WORK', 'VACATION' atd.
     WORK = "WORK"
     VACATION = "VACATION"
     SICK_DAY = "SICK_DAY"
@@ -51,22 +60,20 @@ class TimeLogEntryType(str, Enum):
     UNPAID_LEAVE = "UNPAID_LEAVE"
 
 class TriggerType(str, Enum):
-    # POZOR: V SQL máš VELKÝMI
     WORK_ORDER_BUDGET = "WORK_ORDER_BUDGET"
     INVENTORY_LOW_STOCK = "INVENTORY_LOW_STOCK"
 
 class TriggerCondition(str, Enum):
-    # V SQL máš VELKÝMI
     PERCENTAGE_REACHED = "PERCENTAGE_REACHED"
     QUANTITY_BELOW = "QUANTITY_BELOW"
 
 class PickingOrderStatus(str, Enum):
-    # POZOR: V SQL máš VELKÝMI
     NEW = "NEW"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
 
+# --- MODELY ---
 
 class User(Base):
     __tablename__ = "users"
@@ -107,6 +114,59 @@ class Membership(Base):
     user: Mapped["User"] = relationship(back_populates="memberships")
     company: Mapped["Company"] = relationship(back_populates="members")
 
+class InventoryCategory(Base):
+    __tablename__ = "inventory_categories"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_categories.id"))
+    parent: Mapped["InventoryCategory"] = relationship(remote_side=[id], back_populates="children")
+    children: Mapped[list["InventoryCategory"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
+    __table_args__ = (UniqueConstraint("company_id", "name", "parent_id", name="uq_category_company_name_parent"),)
+
+class InventoryItem(Base):
+    __tablename__ = "inventory_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    sku: Mapped[str] = mapped_column(String(100), index=True)
+    ean: Mapped[Optional[str]] = mapped_column(String(50), index=True)
+    image_url: Mapped[Optional[str]] = mapped_column(String(512))
+    price: Mapped[Optional[float]] = mapped_column(Float)
+    vat_rate: Mapped[Optional[float]] = mapped_column(Float)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    is_monitored_for_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
+    low_stock_threshold: Mapped[Optional[int]] = mapped_column(Integer)
+    low_stock_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, onupdate=now_utc)
+    
+    # Změna: M:N vztah místo ForeignKey
+    categories: Mapped[list["InventoryCategory"]] = relationship(
+        secondary=item_category_association,
+        backref="items"
+    )
+    
+    locations: Mapped[list["ItemLocationStock"]] = relationship(back_populates="inventory_item", cascade="all, delete-orphan")
+    __table_args__ = (UniqueConstraint("company_id", "sku", name="uq_inventory_item_company_sku"),)
+
+class Location(Base):
+    __tablename__ = "locations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_location_company_name"),)
+
+class ItemLocationStock(Base):
+    __tablename__ = "item_location_stock"
+    inventory_item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id", ondelete="CASCADE"), primary_key=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="CASCADE"), primary_key=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    inventory_item: Mapped["InventoryItem"] = relationship(back_populates="locations")
+    location: Mapped["Location"] = relationship()
+
+# ... (ostatní modely jako WorkOrder, Task atd. zůstávají beze změny) ...
 class Invite(Base):
     __tablename__ = "invites"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -133,53 +193,6 @@ class Client(Base):
     ico: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     dic: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_client_company_name"),)
-
-class InventoryCategory(Base):
-    __tablename__ = "inventory_categories"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(255))
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_categories.id"))
-    parent: Mapped["InventoryCategory"] = relationship(remote_side=[id], back_populates="children")
-    children: Mapped[list["InventoryCategory"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
-    __table_args__ = (UniqueConstraint("company_id", "name", "parent_id", name="uq_category_company_name_parent"),)
-
-class InventoryItem(Base):
-    __tablename__ = "inventory_items"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_categories.id", ondelete="SET NULL"), index=True)
-    name: Mapped[str] = mapped_column(String(255))
-    sku: Mapped[str] = mapped_column(String(100), index=True)
-    ean: Mapped[Optional[str]] = mapped_column(String(13), index=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(512))
-    price: Mapped[Optional[float]] = mapped_column(Float)
-    vat_rate: Mapped[Optional[float]] = mapped_column(Float)
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    is_monitored_for_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
-    low_stock_threshold: Mapped[Optional[int]] = mapped_column(Integer)
-    low_stock_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, onupdate=now_utc)
-    category: Mapped["InventoryCategory"] = relationship()
-    locations: Mapped[list["ItemLocationStock"]] = relationship(back_populates="inventory_item", cascade="all, delete-orphan")
-    __table_args__ = (UniqueConstraint("company_id", "sku", name="uq_inventory_item_company_sku"),)
-
-class Location(Base):
-    __tablename__ = "locations"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(255))
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_location_company_name"),)
-
-class ItemLocationStock(Base):
-    __tablename__ = "item_location_stock"
-    inventory_item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id", ondelete="CASCADE"), primary_key=True)
-    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="CASCADE"), primary_key=True)
-    quantity: Mapped[int] = mapped_column(Integer, default=0)
-    inventory_item: Mapped["InventoryItem"] = relationship(back_populates="locations")
-    location: Mapped["Location"] = relationship()
 
 class InventoryAuditLog(Base):
     __tablename__ = "inventory_audit_logs"
@@ -261,7 +274,6 @@ class UsedInventoryItem(Base):
     from_location: Mapped["Location"] = relationship()
 
 class SecurityProtocolEnum(str, Enum):
-    # POZOR: V SQL máš VELKÝMI
     NONE = "NONE"
     TLS = "TLS"
     SSL = "SSL"
@@ -303,7 +315,6 @@ class PickingOrder(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, index=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
     requester: Mapped["User"] = relationship()
-    # --- OPRAVENÝ ZÁPIS ---
     source_location: Mapped[Optional["Location"]] = relationship(foreign_keys=[source_location_id])
     destination_location: Mapped["Location"] = relationship(foreign_keys=[destination_location_id])
     items: Mapped[list["PickingOrderItem"]] = relationship(back_populates="picking_order", cascade="all, delete-orphan")

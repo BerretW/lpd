@@ -101,7 +101,7 @@ async def delete_category(
     if (await db.execute(stmt_children)).scalar_one_or_none():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot delete category with sub-categories.")
 
-    stmt_items = select(InventoryItem.id).where(InventoryItem.category_id == category_id).limit(1)
+    stmt_items = select(InventoryItem.id).where(InventoryItem.categories_id == category_id).limit(1)
     if (await db.execute(stmt_items)).scalar_one_or_none():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot delete category that contains inventory items.")
 
