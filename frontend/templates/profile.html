@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Můj profil</h2>
+<div class="card p-4 shadow-sm">
+    <form method="POST">
+        <div class="mb-3">
+            <label class="form-label">E-mail uživatele</label>
+            <input type="email" name="email" class="form-control" value="{{ session.user_email }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Aktualizovat e-mail</button>
+    </form>
+</div>
+{% endblock %}
