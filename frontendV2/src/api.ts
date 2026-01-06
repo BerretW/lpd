@@ -8,7 +8,7 @@ import {
     SmtpSettingsOut, TriggerOut, PickingOrderOut, PickingOrderStatus, PickingOrderCreateIn 
 } from './types';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = window.location.origin + '/api';
 const USE_MOCKS = false;
 
 // --- REÁLNÝ KONEKTOR ---
