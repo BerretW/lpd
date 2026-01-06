@@ -26,6 +26,7 @@ start "Appartus - API (Backend)" cmd /k "cd backend && call start_backend_local.
 :: 3. Spusteni Frontendu v novem okne
 echo [INFO] Spoustim Frontend...
 start "Appartus - Web (Frontend)" cmd /k "cd frontend && call start_frontend_local.bat"
+start "Appartus - Web (FrontendV2)" cmd /k "cd frontendV2 && call start.bat"
 
 echo.
 echo [SUCCESS] Oba procesy byly iniciovany v samostatnych oknech.

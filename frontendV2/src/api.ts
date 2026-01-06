@@ -17,7 +17,10 @@ async function fetchApi(path: string, options: RequestInit = {}) {
     const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
     if (token) headers.set('Authorization', `Bearer ${token}`);
     
-    if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    if (options.body && 
+        !(options.body instanceof FormData) && 
+        !(options.body instanceof URLSearchParams) && // Přidat tuto podmínku
+        !headers.has('Content-Type')) {
         headers.set('Content-Type', 'application/json');
     }
 
@@ -74,8 +77,10 @@ export const login = async (credentials: any) => {
         return { access_token: mockToken, token_type: "bearer" };
     }
     const formData = new URLSearchParams();
-    formData.append('username', credentials.email);
+    formData.append('username', credentials.email); // Backend chce "username"
     formData.append('password', credentials.password);
+    
+    // fetchApi nyní díky opravě výše nechá URLSearchParams nastavit správný Content-Type
     return fetchApi('/auth/login', { method: 'POST', body: formData });
 };
 
