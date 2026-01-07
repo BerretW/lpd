@@ -10,10 +10,10 @@ from app.db.database import get_db
 from app.db.models import InventoryCategory, InventoryItem
 from app.schemas.category import CategoryCreateIn, CategoryOut, CategoryUpdateIn
 from app.core.dependencies import require_company_access
-
+from app.schemas.category import CategoryCreateIn, CategoryOut, CategoryUpdateIn, CategorySimpleOut
 router = APIRouter(prefix="/companies/{company_id}/categories", tags=["inventory-categories"])
 
-@router.post("", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CategorySimpleOut, status_code=status.HTTP_201_CREATED)
 async def create_category(
     company_id: int,
     payload: CategoryCreateIn,
@@ -23,10 +23,9 @@ async def create_category(
     category = InventoryCategory(**payload.dict(), company_id=company_id)
     db.add(category)
     await db.commit()
-    await db.refresh(category, attribute_names=['children'])
+    await db.refresh(category) # Stačí základní refresh
     return category
 
-# !!! ZDE JE OPRAVA - ODSTRANĚN DUPLICITNÍ DEKORÁTOR A ZMĚNA V LOGICE !!!
 @router.get("", response_model=List[CategoryOut])
 async def list_categories(
     company_id: int,
@@ -68,7 +67,7 @@ async def list_categories(
 
     return root_categories_out
 
-@router.patch("/{category_id}", response_model=CategoryOut)
+@router.patch("/{category_id}", response_model=CategorySimpleOut)
 async def update_category(
     company_id: int,
     category_id: int,
@@ -76,7 +75,10 @@ async def update_category(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    stmt = select(InventoryCategory).where(InventoryCategory.id == category_id, InventoryCategory.company_id == company_id)
+    stmt = select(InventoryCategory).where(
+        InventoryCategory.id == category_id, 
+        InventoryCategory.company_id == company_id
+    )
     category = (await db.execute(stmt)).scalar_one_or_none()
     
     if not category:
@@ -87,7 +89,7 @@ async def update_category(
         setattr(category, key, value)
     
     await db.commit()
-    await db.refresh(category, attribute_names=['children'])
+    await db.refresh(category) # Nenačítáme children, vracíme plochý objekt
     return category
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)

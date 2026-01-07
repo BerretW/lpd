@@ -7,8 +7,13 @@ import {
     ServiceReportDataOut, ClientBillingReportOut, CategoryOut, LocationOut, 
     SmtpSettingsOut, TriggerOut, PickingOrderOut, PickingOrderStatus, PickingOrderCreateIn 
 } from './types';
+const local = false;
+// switch api base url based on environment
+const API_BASE_URL = local ? 'http://localhost:8000' : window.location.origin + '/api';
 
-const API_BASE_URL = window.location.origin + '/api';
+
+// const API_BASE_URL = window.location.origin + '/api';
+// const API_BASE_URL = 'http://localhost:8000'; // Pro lokální vývoj
 const USE_MOCKS = false;
 
 // --- REÁLNÝ KONEKTOR ---
