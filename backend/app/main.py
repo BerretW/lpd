@@ -15,7 +15,8 @@ from app.db.models import User, Company, Membership, RoleEnum
 from app.routers import (
     auth, users, companies, clients, invites, members, inventory, categories,
     work_types, work_orders, tasks, time_logs, audit_logs,
-    locations, inventory_movements, smtp, triggers, internal, picking_orders
+    locations, inventory_movements, smtp, triggers, internal, picking_orders,
+    partners 
 )
 from app.services.trigger_service import check_all_triggers
 
@@ -128,6 +129,7 @@ app.include_router(smtp.router)
 app.include_router(triggers.router)
 app.include_router(internal.router)
 app.include_router(picking_orders.router)
+app.include_router(partners.router) # <--- PŘIDAT REGISTRACI
 
 @app.get("/healthz")
 async def health():

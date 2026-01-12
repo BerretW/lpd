@@ -7,6 +7,9 @@ import {
     ServiceReportDataOut, ClientBillingReportOut, CategoryOut, LocationOut, 
     SmtpSettingsOut, TriggerOut, PickingOrderOut, PickingOrderStatus, PickingOrderCreateIn 
 } from './types';
+import { ManufacturerOut, SupplierOut } from './types';
+
+
 const local = false;
 // switch api base url based on environment
 const API_BASE_URL = local ? 'http://localhost:8000' : window.location.origin + '/api';
@@ -303,3 +306,24 @@ export const assignTask = (cid: number, wid: number, tid: number, aid: any) => U
 export const transferStock = (cid: number, data: any) => USE_MOCKS ? Promise.resolve() : fetchApi(`/companies/${cid}/inventory/movements/transfer`, { method: 'POST', body: JSON.stringify(data) });
 export const writeOffStock = (cid: number, data: any) => USE_MOCKS ? Promise.resolve() : fetchApi(`/companies/${cid}/inventory/movements/write-off`, { method: 'POST', body: JSON.stringify(data) });
 export const fulfillPickingOrder = (cid: number, id: number, data: any) => USE_MOCKS ? Promise.resolve() : fetchApi(`/companies/${cid}/picking-orders/${id}/fulfill`, { method: 'POST', body: JSON.stringify(data) });
+// --- VÝROBCI (Manufacturers) ---
+export const getManufacturers = (cid: number): Promise<ManufacturerOut[]> => {
+    if (USE_MOCKS) return Promise.resolve([{ id: 1, name: "Siemens" }, { id: 2, name: "ABB" }]);
+    return fetchApi(`/companies/${cid}/manufacturers`);
+};
+
+export const createManufacturer = (cid: number, name: string): Promise<ManufacturerOut> => {
+    if (USE_MOCKS) return Promise.resolve({ id: Math.random(), name });
+    return fetchApi(`/companies/${cid}/manufacturers`, { method: 'POST', body: JSON.stringify({ name }) });
+};
+
+// --- DODAVATELÉ (Suppliers) ---
+export const getSuppliers = (cid: number): Promise<SupplierOut[]> => {
+    if (USE_MOCKS) return Promise.resolve([{ id: 1, name: "Sonepar" }, { id: 2, name: "DEK" }]);
+    return fetchApi(`/companies/${cid}/suppliers`);
+};
+
+export const createSupplier = (cid: number, name: string): Promise<SupplierOut> => {
+    if (USE_MOCKS) return Promise.resolve({ id: Math.random(), name });
+    return fetchApi(`/companies/${cid}/suppliers`, { method: 'POST', body: JSON.stringify({ name }) });
+};

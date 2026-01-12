@@ -3,7 +3,7 @@ from pydantic import BaseModel, ConfigDict, computed_field, field_validator
 from typing import Optional, List
 from .category import CategoryOut
 from .location import LocationOut
-
+from .partners import ManufacturerOut, SupplierOut
 class ItemLocationStockOut(BaseModel):
     quantity: int
     location: LocationOut
@@ -13,9 +13,10 @@ class InventoryItemBase(BaseModel):
     name: str
     sku: str
     description: Optional[str] = None
-    # Změna: Nyní přijímáme seznam ID kategorií
     category_ids: List[int] = []
     ean: Optional[str] = None
+    manufacturer_id: Optional[int] = None
+    supplier_id: Optional[int] = None
     image_url: Optional[str] = None
     price: Optional[float] = None
     vat_rate: Optional[float] = None
@@ -29,7 +30,8 @@ class InventoryItemUpdateIn(BaseModel):
     name: Optional[str] = None
     sku: Optional[str] = None
     description: Optional[str] = None
-    # Změna: Aktualizace seznamu kategorií
+    manufacturer_id: Optional[int] = None
+    supplier_id: Optional[int] = None
     category_ids: Optional[List[int]] = None
     ean: Optional[str] = None
     price: Optional[float] = None
@@ -43,7 +45,8 @@ class InventoryItemOut(InventoryItemBase):
     # Změna: Vracíme seznam kategorií
     categories: List[CategoryOut] = []
     locations: List[ItemLocationStockOut] = []
-
+    manufacturer: Optional[ManufacturerOut] = None
+    supplier: Optional[SupplierOut] = None
     @computed_field
     @property
     def total_quantity(self) -> int:

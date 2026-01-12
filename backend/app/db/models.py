@@ -105,6 +105,24 @@ class Company(Base):
     members: Mapped[list["Membership"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     smtp_settings: Mapped["CompanySmtpSettings"] = relationship(back_populates="company", cascade="all, delete-orphan")
 
+
+class Manufacturer(Base):
+    __tablename__ = "manufacturers"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_manufacturer_company_name"),)
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_supplier_company_name"),)
+
+
 class Membership(Base):
     __tablename__ = "memberships"
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
@@ -131,6 +149,8 @@ class InventoryItem(Base):
     name: Mapped[str] = mapped_column(String(255))
     sku: Mapped[str] = mapped_column(String(100), index=True)
     ean: Mapped[Optional[str]] = mapped_column(String(50), index=True)
+    manufacturer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("manufacturers.id", ondelete="SET NULL"))
+    supplier_id: Mapped[Optional[int]] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"))
     image_url: Mapped[Optional[str]] = mapped_column(String(512))
     price: Mapped[Optional[float]] = mapped_column(Float)
     vat_rate: Mapped[Optional[float]] = mapped_column(Float)

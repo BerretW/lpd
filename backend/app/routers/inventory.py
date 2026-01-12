@@ -59,6 +59,8 @@ async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryIt
             selectinload(InventoryItem.locations)
                 .selectinload(ItemLocationStock.location)
                 .selectinload(Location.authorized_users), # <--- PŘIDÁNA TATO ŘÁDKA
+            selectinload(InventoryItem.manufacturer),
+            selectinload(InventoryItem.supplier)
         )
     )
     result = await db.execute(stmt)
@@ -87,6 +89,8 @@ async def list_inventory_items(
             selectinload(InventoryItem.locations)
                 .selectinload(ItemLocationStock.location)
                 .selectinload(Location.authorized_users) # <--- PŘIDÁNA TATO ŘÁDKA
+            selectinload(InventoryItem.manufacturer),
+            selectinload(InventoryItem.supplier)
         )
     )
     # ... zbytek funkce (filtrování podle kategorií, limit, offset) ...

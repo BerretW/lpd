@@ -121,11 +121,22 @@ export interface ItemLocationStockOut {
     location: LocationOut;
 }
 
+export interface ManufacturerOut {
+    id: number;
+    name: string;
+}
+
+export interface SupplierOut {
+    id: number;
+    name: string;
+}
 export interface InventoryItemOut {
     id: number;
     name: string;
     sku: string;
     description?: string;
+    manufacturer?: ManufacturerOut;
+    supplier?: SupplierOut;     
     total_quantity: number;
     locations: ItemLocationStockOut[];
     category_ids: number[];
@@ -136,7 +147,7 @@ export interface InventoryItemOut {
     vat_rate?: number;
     company_id: number;
     is_monitored_for_stock: boolean;
-    low_stock_threshold: number | null;
+       low_stock_threshold: number | null;
 }
 
 export interface WorkTypeOut {
