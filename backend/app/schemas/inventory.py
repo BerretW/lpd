@@ -1,13 +1,16 @@
 # app/schemas/inventory.py
 from pydantic import BaseModel, ConfigDict, computed_field, field_validator
 from typing import Optional, List
-from .category import CategoryOut
+from .category import CategoryOut, CategorySimpleOut
 from .location import LocationOut
 from .partners import ManufacturerOut, SupplierOut
+
+
 class ItemLocationStockOut(BaseModel):
     quantity: int
     location: LocationOut
     model_config = ConfigDict(from_attributes=True)
+
 
 class InventoryItemBase(BaseModel):
     name: str
@@ -23,8 +26,10 @@ class InventoryItemBase(BaseModel):
     is_monitored_for_stock: bool = False
     low_stock_threshold: Optional[int] = None
 
+
 class InventoryItemCreateIn(InventoryItemBase):
     pass
+
 
 class InventoryItemUpdateIn(BaseModel):
     name: Optional[str] = None
@@ -39,20 +44,22 @@ class InventoryItemUpdateIn(BaseModel):
     is_monitored_for_stock: Optional[bool] = None
     low_stock_threshold: Optional[int] = None
 
+
 class InventoryItemOut(InventoryItemBase):
     id: int
     company_id: int
-    # Změna: Vracíme seznam kategorií
-    categories: List[CategoryOut] = []
+    categories: List[CategorySimpleOut] = []
     locations: List[ItemLocationStockOut] = []
     manufacturer: Optional[ManufacturerOut] = None
     supplier: Optional[SupplierOut] = None
+
     @computed_field
     @property
     def total_quantity(self) -> int:
         return sum(loc.quantity for loc in self.locations)
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class PlaceStockIn(BaseModel):
     inventory_item_id: int
@@ -60,12 +67,14 @@ class PlaceStockIn(BaseModel):
     quantity: int
     details: Optional[str] = None
 
+
 class TransferStockIn(BaseModel):
     inventory_item_id: int
     from_location_id: int
     to_location_id: int
     quantity: int
     details: Optional[str] = None
+
 
 class WriteOffStockIn(BaseModel):
     inventory_item_id: int

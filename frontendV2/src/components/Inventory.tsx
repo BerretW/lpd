@@ -81,7 +81,6 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
   useEffect(() => { fetchData(true); }, [companyId, isAdmin]);
   useEffect(() => { if (selectedCategoryId !== undefined) fetchData(false); }, [selectedCategoryId, fetchData]);
   
-  // --- FILTROVÁNÍ (Opraveno pro objekty Manufacturer/Supplier) ---
   const filteredItems = useMemo(() => {
     let itemsToFilter = isAdmin ? items : items.filter(item => item.locations.some(loc => accessibleLocationIds?.has(loc.location.id)));
     if (!searchTerm) return itemsToFilter;
@@ -90,33 +89,29 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
     return itemsToFilter.filter(item => 
         item.name.toLowerCase().includes(lowercasedTerm) || 
         item.sku.toLowerCase().includes(lowercasedTerm) ||
-        // Zde bezpečně přistupujeme k .name
         (item.manufacturer?.name && item.manufacturer.name.toLowerCase().includes(lowercasedTerm)) ||
         (item.supplier?.name && item.supplier.name.toLowerCase().includes(lowercasedTerm))
     );
   }, [items, searchTerm, isAdmin, accessibleLocationIds]);
 
-  // --- ULOŽENÍ POLOŽKY (Data + Obrázek) ---
   const handleSave = async (data: { itemData: any, imageFile: File | null }) => {
       const { itemData, imageFile } = data;
       try {
           let savedItem;
           
-          // 1. Uložení dat do DB
           if (editingItem) {
               savedItem = await api.updateInventoryItem(companyId, editingItem.id, itemData);
           } else {
               savedItem = await api.createInventoryItem(companyId, itemData);
           }
 
-          // 2. Upload obrázku (pokud byl vybrán)
           if (imageFile && savedItem) {
               await api.uploadInventoryItemImage(companyId, savedItem.id, imageFile);
           }
 
           setIsFormModalOpen(false);
           setEditingItem(null);
-          await fetchData(false); // Refresh dat
+          await fetchData(false); 
       } catch (error) {
           setError(error instanceof Error ? error.message : "Uložení selhalo.");
       }
@@ -159,14 +154,9 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
             <table className="min-w-full leading-normal">
               <thead>
                 <tr className="bg-slate-200 text-left text-slate-600 uppercase text-sm">
-                  {/* SLOUPEC PRO OBRÁZEK */}
                   <th className="px-5 py-3 border-b-2 border-slate-300 w-16">Foto</th>
-                  
                   <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colItemName')}</th>
-                  
-                  {/* SLOUPEC PRO VÝROBCE */}
                   <th className="px-5 py-3 border-b-2 border-slate-300">Výrobce</th>
-                  
                   <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colSku')}</th>
                   <th className="px-5 py-3 border-b-2 border-slate-300">{isAdmin ? t('inventory.colTotal') : 'Dostupné ks'}</th>
                   <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colPrice')}</th>
@@ -178,10 +168,10 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
                 {filteredItems.map(item => {
                     const accessibleQuantity = getAccessibleStock(item);
                     const isLowStock = isAdmin && item.is_monitored_for_stock && item.low_stock_threshold != null && item.total_quantity <= item.low_stock_threshold;
+                    
                     return (
                       <tr key={item.id} className="hover:bg-slate-50">
-                        
-                        {/* ZOBRAZENÍ OBRÁZKU */}
+                        {/* ZOBRAZENÍ OBRÁZKU - Používáme přímo item.image_url */}
                         <td className="px-5 py-4 border-b border-slate-200">
                             {item.image_url ? (
                                 <img 
@@ -202,7 +192,6 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
                           {item.ean && <p className="text-xs text-slate-400">EAN: {item.ean}</p>}
                         </td>
                         
-                        {/* ZOBRAZENÍ VÝROBCE A DODAVATELE */}
                         <td className="px-5 py-4 border-b border-slate-200 text-sm">
                             <p className="text-slate-700 whitespace-no-wrap font-medium">{item.manufacturer?.name || '-'}</p>
                             {item.supplier && <p className="text-xs text-slate-400 mt-0.5">Dod: {item.supplier.name}</p>}

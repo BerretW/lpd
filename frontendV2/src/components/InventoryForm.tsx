@@ -6,7 +6,6 @@ import Icon from './common/Icon';
 import * as api from '../api';
 
 interface InventoryFormProps {
-    // Upraveno: onSave nyní přijímá objekt s daty a volitelně souborem
     onSave: (data: { itemData: any; imageFile: File | null }) => void;
     onCancel: () => void;
     companyId: number;
@@ -15,7 +14,6 @@ interface InventoryFormProps {
     initialEan?: string;
 }
 
-// Malé pomocné modální okno pro přidání záznamu (Výrobce/Dodavatel)
 const SimpleAddModal: React.FC<{ title: string; onClose: () => void; onSave: (val: string) => void }> = ({ title, onClose, onSave }) => {
     const [val, setVal] = useState('');
     return (
@@ -64,7 +62,6 @@ const CategoryCheckbox: React.FC<{
 );
 
 const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, companyId, item, categories, initialEan }) => {
-    // Základní pole
     const [name, setName] = useState('');
     const [sku, setSku] = useState('');
     const [price, setPrice] = useState(0);
@@ -72,35 +69,27 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
     const [ean, setEan] = useState(initialEan || '');
     const [description, setDescription] = useState('');
     
-    // Relace (ID jako string pro select)
     const [manufacturerId, setManufacturerId] = useState<string>('');
     const [supplierId, setSupplierId] = useState<string>('');
     
-    // Nastavení
     const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
     const [isMonitored, setIsMonitored] = useState(false);
     const [lowStockThreshold, setLowStockThreshold] = useState(0);
 
-    // Obrázek
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Data pro selecty
     const [manufacturers, setManufacturers] = useState<ManufacturerOut[]>([]);
     const [suppliers, setSuppliers] = useState<SupplierOut[]>([]);
 
-    // Modální okna
     const [showAddManufacturer, setShowAddManufacturer] = useState(false);
     const [showAddSupplier, setShowAddSupplier] = useState(false);
 
-    // Načtení dat při startu
     useEffect(() => {
-        // Načtení číselníků
         api.getManufacturers(companyId).then(setManufacturers);
         api.getSuppliers(companyId).then(setSuppliers);
 
-        // Naplnění formuláře při editaci
         if (item) {
             setName(item.name);
             setSku(item.sku);
@@ -109,15 +98,20 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
             setEan(item.ean || '');
             setDescription(item.description || '');
             
-            // Bezpečné získání ID (pokud backend vrací objekt nebo ID)
             setManufacturerId(item.manufacturer?.id?.toString() || item.manufacturer_id?.toString() || '');
             setSupplierId(item.supplier?.id?.toString() || item.supplier_id?.toString() || '');
 
-            setSelectedCategoryIds(item.category_ids || []);
+            // --- OPRAVA ZDE ---
+            // Pokud backend vrací category_ids prázdné, zkusíme vytáhnout ID z pole objektů categories
+            const loadedCategoryIds = item.category_ids && item.category_ids.length > 0
+                ? item.category_ids
+                : item.categories?.map(c => c.id) || [];
+            
+            setSelectedCategoryIds(loadedCategoryIds);
+            
             setIsMonitored(item.is_monitored_for_stock);
             setLowStockThreshold(item.low_stock_threshold || 0);
 
-            // Nastavení existujícího obrázku
             if (item.image_url) {
                 setImagePreview(item.image_url);
             }
@@ -150,7 +144,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
         }
     };
 
-    // Obsluha nahrání souboru
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -159,10 +152,9 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
         }
     };
 
-    // Reset obrázku
     const handleRemoveImage = () => {
         setImageFile(null);
-        setImagePreview(item?.image_url || null); // Vrátit původní nebo nic
+        setImagePreview(item?.image_url || null);
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
@@ -185,14 +177,12 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
             low_stock_threshold: isMonitored ? lowStockThreshold : undefined
         };
 
-        // Posíláme data i soubor
         onSave({ itemData, imageFile });
     };
 
     return (
         <>
             <form onSubmit={handleSubmit} className="space-y-4 relative">
-                {/* Horní sekce: Základní info + Obrázek */}
                 <div className="flex gap-4">
                     <div className="flex-grow space-y-4">
                         <Input label="Název položky" value={name} onChange={e => setName(e.target.value)} required />
@@ -203,7 +193,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
                         </div>
                     </div>
 
-                    {/* Widget pro obrázek */}
                     <div className="w-32 flex flex-col items-center space-y-2 pt-1">
                         <label className="block text-sm font-medium text-slate-700">Obrázek</label>
                         <div 
@@ -235,7 +224,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
                     </div>
                 </div>
 
-                {/* Sekce Výrobce a Dodavatel */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Výrobce</label>
@@ -272,7 +260,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
                     </div>
                 </div>
 
-                {/* Kategorie */}
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Kategorie (lze vybrat více)</label>
                     <div className="max-h-48 overflow-y-auto border border-slate-300 rounded-md p-2 bg-white shadow-sm">
@@ -288,19 +275,16 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
                     </div>
                 </div>
 
-                {/* Cena a DPH */}
                 <div className="grid grid-cols-2 gap-4">
                     <Input label="Cena bez DPH (Kč)" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" step="0.01" />
                     <Input label="Sazba DPH (%)" type="number" value={vatRate} onChange={e => setVatRate(Number(e.target.value))} required min="0" />
                 </div>
                 
-                {/* Popis */}
                 <div>
                     <label className="block text-sm font-medium text-slate-700">Popis</label>
                     <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="mt-1 block w-full p-2 border bg-white text-slate-900 border-slate-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500"></textarea>
                 </div>
                 
-                {/* Skladový monitoring */}
                 <div className="p-4 border rounded-lg bg-slate-50 space-y-3">
                     <div className="flex items-center">
                         <input type="checkbox" id="isMonitored" checked={isMonitored} onChange={e => setIsMonitored(e.target.checked)} className="h-4 w-4 rounded" />
@@ -311,14 +295,12 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
                     )}
                 </div>
                 
-                {/* Tlačítka */}
                 <div className="flex justify-end pt-4 space-x-2">
                     <Button type="button" variant="secondary" onClick={onCancel}>Zrušit</Button>
                     <Button type="submit">Uložit položku</Button>
                 </div>
             </form>
 
-            {/* Modální okna pro přidání číselníků (renderují se nad formulářem) */}
             {showAddManufacturer && (
                 <SimpleAddModal title="Nový výrobce" onClose={() => setShowAddManufacturer(false)} onSave={handleCreateManufacturer} />
             )}

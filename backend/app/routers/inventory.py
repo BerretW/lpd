@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
-from sqlalchemy import select
 
 from app.db.database import get_db
 from app.db.models import (
@@ -54,8 +53,8 @@ async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryIt
         select(InventoryItem)
         .where(InventoryItem.id == item_id)
         .options(
-            selectinload(InventoryItem.categories)
-                .selectinload(InventoryCategory.children),
+            # ZDE JSME ODSTRANILI .selectinload(InventoryCategory.children)
+            selectinload(InventoryItem.categories),
             selectinload(InventoryItem.locations)
                 .selectinload(ItemLocationStock.location)
                 .selectinload(Location.authorized_users),
@@ -84,8 +83,8 @@ async def list_inventory_items(
         select(InventoryItem)
         .where(InventoryItem.company_id == company_id)
         .options(
-            selectinload(InventoryItem.categories)
-                .selectinload(InventoryCategory.children),
+            # ZDE JSME ODSTRANILI .selectinload(InventoryCategory.children)
+            selectinload(InventoryItem.categories),
             selectinload(InventoryItem.locations)
                 .selectinload(ItemLocationStock.location)
                 .selectinload(Location.authorized_users),
@@ -203,7 +202,8 @@ async def get_inventory_item(item_id: int, db: AsyncSession = Depends(get_db)):
         select(InventoryItem)
         .where(InventoryItem.id == item_id)
         .options(
-            selectinload(InventoryItem.categories).selectinload(InventoryCategory.children)
+            # I ZDE ODSTRANĚNO children, aby to odpovídalo schématu InventoryItemOut
+            selectinload(InventoryItem.categories)
         )
     )
     return result.scalar_one_or_none()
