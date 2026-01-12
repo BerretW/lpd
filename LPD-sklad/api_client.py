@@ -138,7 +138,29 @@ class ApiClient:
         except requests.exceptions.RequestException as e:
             print(f"Chyba při aktualizaci položky {item_id}: {e}")
             return None
-
+    def upload_inventory_item_image(self, item_id: int, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Nahraje obrázek k položce.
+        """
+        try:
+            url = f"{API_BASE_URL}/companies/{self.company_id}/inventory/{item_id}/upload-image"
+            
+            # Otevřeme soubor v binárním režimu
+            with open(file_path, 'rb') as f:
+                files = {'file': (file_path, f, 'image/jpeg')} # MIME type odhadujeme nebo necháme requests
+                
+                # Zde nepoužíváme _make_request, protože requests si Content-Type pro multipart
+                # nastavuje sám (včetně boundary). Jen přidáme auth token.
+                headers = {"Authorization": f"Bearer {self._token}"}
+                
+                print(f"Nahrávám obrázek na: {url}")
+                response = requests.post(url, files=files, headers=headers, timeout=30)
+                
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Chyba při nahrávání obrázku: {e}")
+            return None
     # --- CATEGORIES ---
     def get_categories(self) -> Optional[List[Dict[str, Any]]]:
         try:
@@ -353,3 +375,50 @@ class ApiClient:
         except requests.exceptions.RequestException as e:
             print(f"Chyba při mazání požadavku {order_id}: {e}")
             return False
+    # ==========================================
+    # --- PARTNERS (Výrobci a Dodavatelé) ---
+    # ==========================================
+    
+    # --- MANUFACTURERS ---
+    def get_manufacturers(self) -> Optional[List[Dict[str, Any]]]:
+        try:
+            endpoint = f"/companies/{self.company_id}/manufacturers"
+            response = self._make_request("GET", endpoint)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při načítání výrobců: {e}")
+            return None
+
+    def create_manufacturer(self, name: str) -> Optional[Dict[str, Any]]:
+        try:
+            endpoint = f"/companies/{self.company_id}/manufacturers"
+            payload = {"name": name}
+            response = self._make_request("POST", endpoint, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při vytváření výrobce: {e}")
+            return None
+
+    # --- SUPPLIERS ---
+    def get_suppliers(self) -> Optional[List[Dict[str, Any]]]:
+        try:
+            endpoint = f"/companies/{self.company_id}/suppliers"
+            response = self._make_request("GET", endpoint)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při načítání dodavatelů: {e}")
+            return None
+
+    def create_supplier(self, name: str) -> Optional[Dict[str, Any]]:
+        try:
+            endpoint = f"/companies/{self.company_id}/suppliers"
+            payload = {"name": name}
+            response = self._make_request("POST", endpoint, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Chyba při vytváření dodavatele: {e}")
+            return None

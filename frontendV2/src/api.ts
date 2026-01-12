@@ -327,3 +327,14 @@ export const createSupplier = (cid: number, name: string): Promise<SupplierOut> 
     if (USE_MOCKS) return Promise.resolve({ id: Math.random(), name });
     return fetchApi(`/companies/${cid}/suppliers`, { method: 'POST', body: JSON.stringify({ name }) });
 };
+
+export const uploadInventoryItemImage = (cid: number, itemId: number, file: File): Promise<InventoryItemOut> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // fetchApi automaticky nastaví správný Content-Type pro FormData (ne JSON)
+    return fetchApi(`/companies/${cid}/inventory/${itemId}/upload-image`, { 
+        method: 'POST', 
+        body: formData 
+    });
+};

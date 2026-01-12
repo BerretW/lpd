@@ -58,7 +58,7 @@ async def get_full_inventory_item(item_id: int, db: AsyncSession) -> InventoryIt
                 .selectinload(InventoryCategory.children),
             selectinload(InventoryItem.locations)
                 .selectinload(ItemLocationStock.location)
-                .selectinload(Location.authorized_users), # <--- PŘIDÁNA TATO ŘÁDKA
+                .selectinload(Location.authorized_users),
             selectinload(InventoryItem.manufacturer),
             selectinload(InventoryItem.supplier)
         )
@@ -88,7 +88,7 @@ async def list_inventory_items(
                 .selectinload(InventoryCategory.children),
             selectinload(InventoryItem.locations)
                 .selectinload(ItemLocationStock.location)
-                .selectinload(Location.authorized_users) # <--- PŘIDÁNA TATO ŘÁDKA
+                .selectinload(Location.authorized_users),
             selectinload(InventoryItem.manufacturer),
             selectinload(InventoryItem.supplier)
         )

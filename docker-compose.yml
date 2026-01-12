@@ -9,7 +9,7 @@ services:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: database
       MYSQL_PASSWORD: userpassword
-    # ports: ["3306:3306"] # Zakomentuj pro produkci/izolaci
+    # ports: ["3306:3306"] # Odkomentuj, pokud se chceš připojit k DB z PC (DBeaver atd.)
     volumes:
       - db_data:/var/lib/mysql
 
@@ -18,25 +18,25 @@ services:
     container_name: appartus_api
     env_file: ./backend/.env
     ports:
-      - "8001:8000"           # Nginx běží na portu 80
+      - "8001:8000" # API je dostupné na localhost:8001
     environment:
       - DATABASE_URL=mysql+asyncmy://root:rootpassword@db:3306/database
     volumes:
       - ./backend:/app
-    # FastAPI běží na 8000 uvnitř sítě, zvenčí není vidět
+      - ./uploaded_files:/app/static
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - db
     restart: unless-stopped
 
   frontend:
-      build: ./frontendV2
-      container_name: appartus_web_v2
-      ports:
-        - "80:80"  # Web bude dostupný na standardním portu 80
-      depends_on:
-        - api
-      restart: unless-stopped
+    build: ./frontendV2
+    container_name: appartus_web_v2
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
 
 volumes:
   db_data:

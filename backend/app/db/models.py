@@ -151,6 +151,8 @@ class InventoryItem(Base):
     ean: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     manufacturer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("manufacturers.id", ondelete="SET NULL"))
     supplier_id: Mapped[Optional[int]] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"))
+    manufacturer: Mapped[Optional["Manufacturer"]] = relationship()
+    supplier: Mapped[Optional["Supplier"]] = relationship()
     image_url: Mapped[Optional[str]] = mapped_column(String(512))
     price: Mapped[Optional[float]] = mapped_column(Float)
     vat_rate: Mapped[Optional[float]] = mapped_column(Float)

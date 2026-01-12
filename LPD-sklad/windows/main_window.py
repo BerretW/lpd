@@ -144,8 +144,13 @@ class MainWindow(QMainWindow):
         fl.addWidget(QLabel("EAN:")); self.ean_search_input = QLineEdit(); fl.addWidget(self.ean_search_input)
         
         splitter = QSplitter(Qt.Orientation.Vertical)
-        self.inventory_table = QTableWidget(); self.inventory_table.setColumnCount(7)
-        self.inventory_table.setHorizontalHeaderLabels(["ID", "Název", "SKU", "EAN", "Celkem", "Cena", "Kategorie"])
+        
+        # ZMĚNA: Zvýšen počet sloupců ze 7 na 9 a přidány hlavičky
+        self.inventory_table = QTableWidget(); self.inventory_table.setColumnCount(9)
+        self.inventory_table.setHorizontalHeaderLabels([
+            "ID", "Název", "SKU", "EAN", "Celkem", "Cena", "Kategorie", "Výrobce", "Dodavatel"
+        ])
+        
         self.inventory_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.inventory_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.inventory_table.setAlternatingRowColors(True)
@@ -158,6 +163,32 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.inventory_table); splitter.addWidget(ldg); splitter.setSizes([500, 300])
         layout.addWidget(fg); layout.addWidget(splitter)
         return tab
+
+    def load_inventory_data(self):
+        cat_id = self.category_filter_combo.currentData()
+        self.inventory_data = self.api_client.get_inventory_items(category_id=cat_id) or []
+        self.inventory_table.setRowCount(0)
+        self.inventory_table.setRowCount(len(self.inventory_data))
+        
+        for r, item in enumerate(self.inventory_data):
+            cats = ", ".join([c['name'] for c in item.get('categories', [])])
+            
+            # Bezpečné získání jména výrobce a dodavatele (mohou být None)
+            man_name = item.get('manufacturer', {}).get('name') if item.get('manufacturer') else ""
+            sup_name = item.get('supplier', {}).get('name') if item.get('supplier') else ""
+
+            self.inventory_table.setItem(r, 0, QTableWidgetItem(str(item['id'])))
+            self.inventory_table.setItem(r, 1, QTableWidgetItem(item['name']))
+            self.inventory_table.setItem(r, 2, QTableWidgetItem(item['sku']))
+            self.inventory_table.setItem(r, 3, QTableWidgetItem(item.get('ean', '')))
+            self.inventory_table.setItem(r, 4, QTableWidgetItem(str(item['total_quantity'])))
+            self.inventory_table.setItem(r, 5, QTableWidgetItem(f"{item.get('price', 0):.2f}"))
+            self.inventory_table.setItem(r, 6, QTableWidgetItem(cats))
+            # ZMĚNA: Přidání nových sloupců
+            self.inventory_table.setItem(r, 7, QTableWidgetItem(man_name))
+            self.inventory_table.setItem(r, 8, QTableWidgetItem(sup_name))
+            
+        self.inventory_table.resizeColumnsToContents()
 
     def _create_picking_orders_tab(self):
         tab = QWidget(); layout = QVBoxLayout(tab)
@@ -233,21 +264,6 @@ class MainWindow(QMainWindow):
         for c in self.categories_flat: self.category_filter_combo.addItem(c['name'], c['id'])
         self.category_filter_combo.blockSignals(False)
 
-    def load_inventory_data(self):
-        cat_id = self.category_filter_combo.currentData()
-        self.inventory_data = self.api_client.get_inventory_items(category_id=cat_id) or []
-        self.inventory_table.setRowCount(0)
-        self.inventory_table.setRowCount(len(self.inventory_data))
-        for r, item in enumerate(self.inventory_data):
-            cats = ", ".join([c['name'] for c in item.get('categories', [])])
-            self.inventory_table.setItem(r, 0, QTableWidgetItem(str(item['id'])))
-            self.inventory_table.setItem(r, 1, QTableWidgetItem(item['name']))
-            self.inventory_table.setItem(r, 2, QTableWidgetItem(item['sku']))
-            self.inventory_table.setItem(r, 3, QTableWidgetItem(item.get('ean', '')))
-            self.inventory_table.setItem(r, 4, QTableWidgetItem(str(item['total_quantity'])))
-            self.inventory_table.setItem(r, 5, QTableWidgetItem(f"{item.get('price', 0):.2f}"))
-            self.inventory_table.setItem(r, 6, QTableWidgetItem(cats))
-        self.inventory_table.resizeColumnsToContents()
 
     def update_location_details_view(self):
         self.location_detail_table.setRowCount(0)
