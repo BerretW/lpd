@@ -35,6 +35,10 @@ class ItemDialog(QDialog):
         
         self.name_input = QLineEdit()
         self.sku_input = QLineEdit()
+        # --- NOVÉ: Input pro Alternativní SKU ---
+        self.alt_sku_input = QLineEdit()
+        self.alt_sku_input.setPlaceholderText("Např. kód výrobce")
+        # ----------------------------------------
         self.ean_input = QLineEdit()
         
         self.price_input = QDoubleSpinBox()
@@ -42,6 +46,12 @@ class ItemDialog(QDialog):
         self.price_input.setDecimals(2)
         self.price_input.setSuffix(" Kč")
         
+        self.retail_price_input = QDoubleSpinBox()
+        self.retail_price_input.setRange(0.0, 999999.0)
+        self.retail_price_input.setDecimals(2)
+        self.retail_price_input.setSuffix(" Kč")
+
+
         self.manufacturer_combo = QComboBox()
         self.add_manufacturer_btn = QPushButton(qta.icon('fa5s.plus'), "")
         self.add_manufacturer_btn.setFixedWidth(30)
@@ -69,9 +79,11 @@ class ItemDialog(QDialog):
         form_layout = QFormLayout()
         form_layout.addRow("Název*:", self.name_input)
         form_layout.addRow("SKU*:", self.sku_input)
+        form_layout.addRow("Alt. SKU:", self.alt_sku_input)
         form_layout.addRow("EAN:", self.ean_input)
         form_layout.addRow("Cena (bez DPH):", self.price_input)
-        
+        form_layout.addRow("Prodejní cena (MOC):", self.retail_price_input)
+
         man_layout = QHBoxLayout(); man_layout.addWidget(self.manufacturer_combo); man_layout.addWidget(self.add_manufacturer_btn)
         form_layout.addRow("Výrobce:", man_layout)
 
@@ -180,6 +192,8 @@ class ItemDialog(QDialog):
     def _populate_fields(self):
         self.name_input.setText(self.item_data.get('name', ''))
         self.sku_input.setText(self.item_data.get('sku', ''))
+        self.alt_sku_input.setText(self.item_data.get('alternative_sku') or '')
+        self.retail_price_input.setValue(self.item_data.get('retail_price') or 0.0)
         self.ean_input.setText(self.item_data.get('ean', ''))
         self.description_input.setText(self.item_data.get('description', ''))
         self.price_input.setValue(self.item_data.get('price') or 0.0)
@@ -266,6 +280,8 @@ class ItemDialog(QDialog):
         data = {
             "name": self.name_input.text().strip(),
             "sku": self.sku_input.text().strip(),
+            "alternative_sku": self.alt_sku_input.text().strip() or None,
+            "retail_price": self.retail_price_input.value() if self.retail_price_input.value() > 0 else None,
             "ean": self.ean_input.text().strip() or None,
             "description": self.description_input.toPlainText().strip() or None,
             "price": self.price_input.value(),

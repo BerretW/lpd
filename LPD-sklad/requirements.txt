@@ -1,0 +1,6 @@
+PyQt6
+requests
+PyJWT
+qtawesome
+pandas
+openpyxl

@@ -146,9 +146,10 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Vertical)
         
         # ZMĚNA: Zvýšen počet sloupců ze 7 na 9 a přidány hlavičky
-        self.inventory_table = QTableWidget(); self.inventory_table.setColumnCount(9)
+        self.inventory_table = QTableWidget(); self.inventory_table.setColumnCount(11)
         self.inventory_table.setHorizontalHeaderLabels([
-            "ID", "Název", "SKU", "EAN", "Celkem", "Cena", "Kategorie", "Výrobce", "Dodavatel"
+            "ID", "Název", "SKU", "Alt. SKU", "EAN", "Celkem", 
+            "Nákup", "Prodej (MOC)", "Kategorie", "Výrobce", "Dodavatel"
         ])
         
         self.inventory_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -172,21 +173,33 @@ class MainWindow(QMainWindow):
         
         for r, item in enumerate(self.inventory_data):
             cats = ", ".join([c['name'] for c in item.get('categories', [])])
-            
-            # Bezpečné získání jména výrobce a dodavatele (mohou být None)
             man_name = item.get('manufacturer', {}).get('name') if item.get('manufacturer') else ""
             sup_name = item.get('supplier', {}).get('name') if item.get('supplier') else ""
+
+            # --- NOVÉ: Zformátování dat ---
+            alt_sku = item.get('alternative_sku') or ""
+            retail_price = item.get('retail_price')
+            retail_price_str = f"{retail_price:.2f}" if retail_price is not None else ""
+            # ------------------------------
 
             self.inventory_table.setItem(r, 0, QTableWidgetItem(str(item['id'])))
             self.inventory_table.setItem(r, 1, QTableWidgetItem(item['name']))
             self.inventory_table.setItem(r, 2, QTableWidgetItem(item['sku']))
-            self.inventory_table.setItem(r, 3, QTableWidgetItem(item.get('ean', '')))
-            self.inventory_table.setItem(r, 4, QTableWidgetItem(str(item['total_quantity'])))
-            self.inventory_table.setItem(r, 5, QTableWidgetItem(f"{item.get('price', 0):.2f}"))
-            self.inventory_table.setItem(r, 6, QTableWidgetItem(cats))
-            # ZMĚNA: Přidání nových sloupců
-            self.inventory_table.setItem(r, 7, QTableWidgetItem(man_name))
-            self.inventory_table.setItem(r, 8, QTableWidgetItem(sup_name))
+            
+            # --- NOVÝ SLOUPEC (index 3) ---
+            self.inventory_table.setItem(r, 3, QTableWidgetItem(alt_sku))
+            
+            self.inventory_table.setItem(r, 4, QTableWidgetItem(item.get('ean', '')))
+            self.inventory_table.setItem(r, 5, QTableWidgetItem(str(item['total_quantity'])))
+            self.inventory_table.setItem(r, 6, QTableWidgetItem(f"{item.get('price', 0):.2f}"))
+            
+            # --- NOVÝ SLOUPEC (index 7) ---
+            self.inventory_table.setItem(r, 7, QTableWidgetItem(retail_price_str))
+            
+            # --- POSUNUTÉ SLOUPCE ---
+            self.inventory_table.setItem(r, 8, QTableWidgetItem(cats))
+            self.inventory_table.setItem(r, 9, QTableWidgetItem(man_name))
+            self.inventory_table.setItem(r, 10, QTableWidgetItem(sup_name))
             
         self.inventory_table.resizeColumnsToContents()
 
@@ -308,7 +321,12 @@ class MainWindow(QMainWindow):
     def filter_inventory_table(self):
         txt = self.search_input.text().lower()
         for r in range(self.inventory_table.rowCount()):
-            match = txt in self.inventory_table.item(r, 1).text().lower() or txt in self.inventory_table.item(r, 2).text().lower()
+            # Prohledáváme Název (sloupec 1), SKU (2) a nově Alt SKU (3)
+            name_match = txt in self.inventory_table.item(r, 1).text().lower()
+            sku_match = txt in self.inventory_table.item(r, 2).text().lower()
+            alt_sku_match = txt in self.inventory_table.item(r, 3).text().lower()
+            
+            match = name_match or sku_match or alt_sku_match
             self.inventory_table.setRowHidden(r, not match)
 
     def process_ean_search(self):

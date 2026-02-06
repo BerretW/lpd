@@ -8,7 +8,7 @@ import {
     SmtpSettingsOut, TriggerOut, PickingOrderOut, PickingOrderStatus, PickingOrderCreateIn 
 } from './types';
 import { ManufacturerOut, SupplierOut } from './types';
-
+import { ClientCategoryMargin } from './types';
 
 const local = false;
 // switch api base url based on environment
@@ -49,6 +49,11 @@ async function fetchApi(path: string, options: RequestInit = {}) {
 }
 
 // --- MOCK DATA STORE ---
+const mockClientMargins: Record<string, number> = {
+    "1_1": 15.5, // Klient 1 má na kategorii 1 marži 15.5%
+};
+
+
 const mockStore = {
     company: { id: 1, name: "ProfiTechnik s.r.o.", slug: "profitechnik", legal_name: "ProfiTechnik Elektro s.r.o.", address: "Průmyslová 145, 370 01 České Budějovice", ico: "12345678", dic: "CZ12345678" },
     members: [
@@ -337,4 +342,48 @@ export const uploadInventoryItemImage = (cid: number, itemId: number, file: File
         method: 'POST', 
         body: formData 
     });
+};
+
+export const getClientCategoryMargins = async (cid: number, clientId: number): Promise<ClientCategoryMargin[]> => {
+    if (USE_MOCKS) {
+        // Simulace: vrátíme seznam marží pro daného klienta
+        const margins: ClientCategoryMargin[] = [];
+        const categories = mockStore.categories; // Předpokládáme, že máme přístup k mock kategoriím
+        
+        // Jednoduchá iterace přes mockStore categories (pro reálný backend by to byl SQL dotaz)
+        // Zde jen simulujeme, že projdeme pár ID a koukneme do mockClientMargins
+        const flattenCategories = (cats: any[]): any[] => cats.flatMap(c => [c, ...flattenCategories(c.children)]);
+        const allCats = flattenCategories(categories);
+
+        allCats.forEach(cat => {
+            const key = `${clientId}_${cat.id}`;
+            if (mockClientMargins[key] !== undefined) {
+                margins.push({
+                    category_id: cat.id,
+                    category_name: cat.name,
+                    margin_percentage: mockClientMargins[key]
+                });
+            }
+        });
+        return Promise.resolve(margins);
+    }
+    return fetchApi(`/companies/${cid}/clients/${clientId}/margins`);
+};
+
+export const setClientCategoryMargin = async (cid: number, clientId: number, data: ClientCategoryMargin): Promise<void> => {
+    if (USE_MOCKS) {
+        const key = `${clientId}_${data.category_id}`;
+        mockClientMargins[key] = data.margin_percentage;
+        return Promise.resolve();
+    }
+    return fetchApi(`/companies/${cid}/clients/${clientId}/margins`, { method: 'POST', body: JSON.stringify(data) });
+};
+
+export const deleteClientCategoryMargin = async (cid: number, clientId: number, categoryId: number): Promise<void> => {
+    if (USE_MOCKS) {
+        const key = `${clientId}_${categoryId}`;
+        delete mockClientMargins[key];
+        return Promise.resolve();
+    }
+    return fetchApi(`/companies/${cid}/clients/${clientId}/margins/${categoryId}`, { method: 'DELETE' });
 };

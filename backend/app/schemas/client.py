@@ -35,3 +35,13 @@ class ClientBillingReportOut(BaseModel):
     grand_total: float
     time_logs: List[BillingReportTimeLogOut]
     used_items: List[BillingReportUsedItemOut]
+
+class ClientMarginSetIn(BaseModel):
+    category_id: int
+    margin_percentage: float
+
+class ClientMarginOut(BaseModel):
+    category_id: int
+    category_name: str
+    margin_percentage: float
+    model_config = ConfigDict(from_attributes=True)

@@ -15,7 +15,8 @@ from app.db.models import WorkOrder, Task, TimeLog, UsedInventoryItem, TimeLogEn
 from app.core.dependencies import require_admin_access # Předpokládáme, že reporty generuje admin
 from app.schemas.client import ClientBillingReportOut
 from app.schemas.work_order import BillingReportTimeLogOut, BillingReportUsedItemOut
-
+from app.db.models import ClientCategoryMargin, InventoryCategory, InventoryItem
+from app.schemas.client import ClientMarginOut, ClientMarginSetIn
 
 router = APIRouter(prefix="/companies/{company_id}/clients", tags=["clients"])
 
@@ -85,10 +86,21 @@ async def get_client_billing_report(
     """
     Agreguje veškerou odvedenou práci a spotřebovaný materiál pro jednoho klienta
     napříč VŠEMI jeho zakázkami v daném časovém období.
+    
+    Aplikuje logiku marží:
+    1. Specifická marže kategorie
+    2. Globální marže klienta
+    3. 0%
     """
     client = await get_client_or_404(company_id, client_id, db)
     
-    # --- 1. Sběr dat o odpracovaném čase ---
+    # --- Načtení specifických marží klienta do slovníku pro rychlé vyhledání ---
+    margin_stmt = select(ClientCategoryMargin).where(ClientCategoryMargin.client_id == client_id)
+    margins_results = (await db.execute(margin_stmt)).scalars().all()
+    # Mapa: {category_id: margin_percentage}
+    category_margins_map = {m.category_id: m.margin_percentage for m in margins_results}
+
+    # --- 1. Sběr dat o odpracovaném čase (beze změny) ---
     time_log_query = (
         select(TimeLog)
         .join(TimeLog.task).join(Task.work_order)
@@ -103,22 +115,25 @@ async def get_client_billing_report(
     )
     time_logs_result = (await db.execute(time_log_query)).scalars().all()
 
-    # --- 2. Sběr dat o použitém materiálu ---
+    # --- 2. Sběr dat o použitém materiálu (UPRAVENO EAGER LOADING) ---
     used_items_query = (
         select(UsedInventoryItem)
         .join(UsedInventoryItem.task).join(Task.work_order)
         .where(
             WorkOrder.client_id == client_id,
             WorkOrder.company_id == company_id,
-            # Filtrujeme materiál podle data PŘIDÁNÍ ZÁZNAMU o spotřebě
             func.date(UsedInventoryItem.log_date) >= start_date,
             func.date(UsedInventoryItem.log_date) <= end_date,
         )
-        .options(selectinload(UsedInventoryItem.inventory_item), selectinload(UsedInventoryItem.task))
+        .options(
+            selectinload(UsedInventoryItem.inventory_item)
+            .selectinload(InventoryItem.categories), # DŮLEŽITÉ: Načíst kategorie položky
+            selectinload(UsedInventoryItem.task)
+        )
     )
     used_items_result = (await db.execute(used_items_query)).scalars().all()
     
-    # --- 3. Zpracování a agregace dat (stejné jako v reportu pro zakázku) ---
+    # --- 3. Zpracování a agregace dat ---
     report_time_logs, total_hours, total_price_work = [], 0.0, 0.0
     for log in time_logs_result:
         duration = (log.end_time - log.start_time).total_seconds() / 3600
@@ -129,11 +144,37 @@ async def get_client_billing_report(
         total_price_work += price
         
     report_used_items, total_price_inventory = [], 0.0
+    
+    # Výchozí marže klienta (pokud je None, bereme 0)
+    default_client_margin = client.margin_percentage if client.margin_percentage is not None else 0.0
+
     for item in used_items_result:
-        price_per_unit = item.inventory_item.price if item.inventory_item and item.inventory_item.price is not None else 0.0
-        price = item.quantity * price_per_unit
-        report_used_items.append(BillingReportUsedItemOut(item_name=item.inventory_item.name if item.inventory_item else "N/A", sku=item.inventory_item.sku if item.inventory_item else "N/A", quantity=item.quantity, price=price_per_unit, total_price=round(price, 2), task_name=item.task.name if item.task else "N/A"))
-        total_price_inventory += price
+        base_price_per_unit = item.inventory_item.price if item.inventory_item and item.inventory_item.price is not None else 0.0
+        
+        # --- LOGIKA VÝPOČTU MARŽE ---
+        applied_margin = default_client_margin
+        
+        # Zkontrolujeme, zda má položka kategorii se specifickou marží
+        if item.inventory_item and item.inventory_item.categories:
+            for cat in item.inventory_item.categories:
+                if cat.id in category_margins_map:
+                    applied_margin = category_margins_map[cat.id]
+                    break # Použijeme první nalezenou shodu (případně lze implementovat logiku "nejvyšší marže")
+        
+        # Výpočet finální ceny: Základní cena * (1 + marže/100)
+        final_price_per_unit = base_price_per_unit * (1 + applied_margin / 100.0)
+        
+        price_total = item.quantity * final_price_per_unit
+        
+        report_used_items.append(BillingReportUsedItemOut(
+            item_name=item.inventory_item.name if item.inventory_item else "N/A",
+            sku=item.inventory_item.sku if item.inventory_item else "N/A",
+            quantity=item.quantity,
+            price=round(final_price_per_unit, 2), # Vracíme cenu po aplikaci marže
+            total_price=round(price_total, 2),
+            task_name=item.task.name if item.task else "N/A"
+        ))
+        total_price_inventory += price_total
         
     return ClientBillingReportOut(
         client_name=client.name,
@@ -144,3 +185,100 @@ async def get_client_billing_report(
         time_logs=report_time_logs,
         used_items=report_used_items
     )
+
+@router.get("/{client_id}/margins", response_model=List[ClientMarginOut], summary="Seznam specifických marží klienta")
+async def list_client_margins(
+    company_id: int,
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access)
+):
+    await get_client_or_404(company_id, client_id, db)
+    
+    stmt = (
+        select(ClientCategoryMargin)
+        .where(ClientCategoryMargin.client_id == client_id)
+        .options(selectinload(ClientCategoryMargin.category))
+    )
+    results = (await db.execute(stmt)).scalars().all()
+    
+    return [
+        ClientMarginOut(
+            category_id=m.category_id,
+            category_name=m.category.name,
+            margin_percentage=m.margin_percentage
+        )
+        for m in results
+    ]
+
+@router.post("/{client_id}/margins", response_model=ClientMarginOut, summary="Nastavení/Aktualizace marže pro kategorii")
+async def upsert_client_margin(
+    company_id: int,
+    client_id: int,
+    payload: ClientMarginSetIn,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin_access)
+):
+    # Ověření, že klient patří firmě
+    client = await get_client_or_404(company_id, client_id, db)
+    
+    # Ověření, že kategorie patří firmě (bezpečnost)
+    cat_stmt = select(InventoryCategory).where(
+        InventoryCategory.id == payload.category_id,
+        InventoryCategory.company_id == company_id
+    )
+    category = (await db.execute(cat_stmt)).scalar_one_or_none()
+    if not category:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found in this company.")
+
+    # Upsert logika
+    stmt = select(ClientCategoryMargin).where(
+        ClientCategoryMargin.client_id == client_id,
+        ClientCategoryMargin.category_id == payload.category_id
+    )
+    margin_entry = (await db.execute(stmt)).scalar_one_or_none()
+
+    if margin_entry:
+        margin_entry.margin_percentage = payload.margin_percentage
+    else:
+        margin_entry = ClientCategoryMargin(
+            client_id=client_id,
+            category_id=payload.category_id,
+            margin_percentage=payload.margin_percentage
+        )
+        db.add(margin_entry)
+    
+    await db.commit()
+    # Pro správné vrácení jména kategorie v response
+    await db.refresh(margin_entry) 
+    # Manuální načtení vztahu pro response, pokud není v session (pro jistotu)
+    if not margin_entry.category:
+        margin_entry.category = category
+
+    return ClientMarginOut(
+        category_id=margin_entry.category_id,
+        category_name=margin_entry.category.name,
+        margin_percentage=margin_entry.margin_percentage
+    )
+
+@router.delete("/{client_id}/margins/{category_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Smazání specifické marže")
+async def delete_client_margin(
+    company_id: int,
+    client_id: int,
+    category_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin_access)
+):
+    await get_client_or_404(company_id, client_id, db)
+    
+    stmt = select(ClientCategoryMargin).where(
+        ClientCategoryMargin.client_id == client_id,
+        ClientCategoryMargin.category_id == category_id
+    )
+    margin_entry = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if margin_entry:
+        await db.delete(margin_entry)
+        await db.commit()
+    else:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Margin rule not found.")

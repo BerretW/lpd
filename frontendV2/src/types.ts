@@ -447,3 +447,8 @@ export interface TemplateDayEntry {
     isOvertime: boolean;
     notes: string;
 }
+export interface ClientCategoryMargin {
+    category_id: number;
+    category_name?: string; // Název pro zobrazení
+    margin_percentage: number;
+}

@@ -219,10 +219,8 @@ class Client(Base):
     contact_person: Mapped[Optional[str]] = mapped_column(String(255))
     ico: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     dic: Mapped[Optional[str]] = mapped_column(String(20), index=True)
-    
-    # --- PŘIDANÝ ŘÁDEK ZDE ---
     margin_percentage: Mapped[Optional[float]] = mapped_column(Float) 
-
+    category_margins: Mapped[list["ClientCategoryMargin"]] = relationship(back_populates="client", cascade="all, delete-orphan")
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_client_company_name"),)
 
     
@@ -361,3 +359,13 @@ class PickingOrderItem(Base):
     picked_quantity: Mapped[Optional[int]] = mapped_column(Integer)
     picking_order: Mapped["PickingOrder"] = relationship(back_populates="items")
     inventory_item: Mapped["InventoryItem"] = relationship()
+
+
+class ClientCategoryMargin(Base):
+    __tablename__ = "client_category_margins"
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("inventory_categories.id", ondelete="CASCADE"), primary_key=True)
+    margin_percentage: Mapped[float] = mapped_column(Float, default=0.0)
+    
+    client: Mapped["Client"] = relationship(back_populates="category_margins")
+    category: Mapped["InventoryCategory"] = relationship()
