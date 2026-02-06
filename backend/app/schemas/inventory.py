@@ -22,6 +22,8 @@ class InventoryItemBase(BaseModel):
     supplier_id: Optional[int] = None
     image_url: Optional[str] = None
     price: Optional[float] = None
+    retail_price: Optional[float] = None # MOC
+    alternative_sku: Optional[str] = None
     vat_rate: Optional[float] = None
     is_monitored_for_stock: bool = False
     low_stock_threshold: Optional[int] = None
@@ -43,6 +45,8 @@ class InventoryItemUpdateIn(BaseModel):
     vat_rate: Optional[float] = None
     is_monitored_for_stock: Optional[bool] = None
     low_stock_threshold: Optional[int] = None
+    retail_price: Optional[float] = None
+    alternative_sku: Optional[str] = None
 
 
 class InventoryItemOut(InventoryItemBase):

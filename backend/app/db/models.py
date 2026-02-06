@@ -148,6 +148,7 @@ class InventoryItem(Base):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     sku: Mapped[str] = mapped_column(String(100), index=True)
+    alternative_sku: Mapped[Optional[str]] = mapped_column(String(100), index=True)
     ean: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     manufacturer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("manufacturers.id", ondelete="SET NULL"))
     supplier_id: Mapped[Optional[int]] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"))
@@ -155,6 +156,7 @@ class InventoryItem(Base):
     supplier: Mapped[Optional["Supplier"]] = relationship()
     image_url: Mapped[Optional[str]] = mapped_column(String(512))
     price: Mapped[Optional[float]] = mapped_column(Float)
+    retail_price: Mapped[Optional[float]] = mapped_column(Float)
     vat_rate: Mapped[Optional[float]] = mapped_column(Float)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_monitored_for_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
@@ -202,6 +204,8 @@ class Invite(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     __table_args__ = (UniqueConstraint("company_id", "email", name="uq_invite_company_email"),)
 
+# backend/app/db/models.py
+
 class Client(Base):
     __tablename__ = "clients"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -215,8 +219,13 @@ class Client(Base):
     contact_person: Mapped[Optional[str]] = mapped_column(String(255))
     ico: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     dic: Mapped[Optional[str]] = mapped_column(String(20), index=True)
+    
+    # --- PŘIDANÝ ŘÁDEK ZDE ---
+    margin_percentage: Mapped[Optional[float]] = mapped_column(Float) 
+
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_client_company_name"),)
 
+    
 class InventoryAuditLog(Base):
     __tablename__ = "inventory_audit_logs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

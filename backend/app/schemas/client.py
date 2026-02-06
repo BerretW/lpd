@@ -13,6 +13,7 @@ class ClientBase(BaseModel):
     contact_person: Optional[str] = None
     ico: Optional[str] = None
     dic: Optional[str] = None
+    margin_percentage: Optional[float] = None
 
 class ClientCreateIn(ClientBase):
     pass

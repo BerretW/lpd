@@ -18,7 +18,7 @@ services:
     container_name: appartus_api
     env_file: ./backend/.env
     ports:
-      - "8001:8000" # API je dostupné na localhost:8001
+      - "8001:8000"
     environment:
       - DATABASE_URL=mysql+asyncmy://root:rootpassword@db:3306/database
     volumes:

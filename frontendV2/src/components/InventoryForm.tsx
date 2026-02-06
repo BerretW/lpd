@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { InventoryItem, CategoryOut, ManufacturerOut, SupplierOut } from '../types';
 import Input from './common/Input';
 import Button from './common/Button';
@@ -64,10 +64,14 @@ const CategoryCheckbox: React.FC<{
 const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, companyId, item, categories, initialEan }) => {
     const [name, setName] = useState('');
     const [sku, setSku] = useState('');
-    const [price, setPrice] = useState(0);
+    const [price, setPrice] = useState(0); // Nákupní cena
     const [vatRate, setVatRate] = useState(21);
     const [ean, setEan] = useState(initialEan || '');
     const [description, setDescription] = useState('');
+    
+    // Nové stavy
+    const [alternativeSku, setAlternativeSku] = useState('');
+    const [retailPrice, setRetailPrice] = useState(0); // Koncová cena (MOC)
     
     const [manufacturerId, setManufacturerId] = useState<string>('');
     const [supplierId, setSupplierId] = useState<string>('');
@@ -98,11 +102,13 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
             setEan(item.ean || '');
             setDescription(item.description || '');
             
+            // Načtení nových polí
+            setAlternativeSku(item.alternative_sku || '');
+            setRetailPrice(item.retail_price || 0);
+            
             setManufacturerId(item.manufacturer?.id?.toString() || item.manufacturer_id?.toString() || '');
             setSupplierId(item.supplier?.id?.toString() || item.supplier_id?.toString() || '');
 
-            // --- OPRAVA ZDE ---
-            // Pokud backend vrací category_ids prázdné, zkusíme vytáhnout ID z pole objektů categories
             const loadedCategoryIds = item.category_ids && item.category_ids.length > 0
                 ? item.category_ids
                 : item.categories?.map(c => c.id) || [];
@@ -117,6 +123,14 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
             }
         }
     }, [item, companyId]);
+
+    // Automatický výpočet slevy
+    const calculatedDiscount = useMemo(() => {
+        if (!retailPrice || retailPrice <= 0 || !price) return 0;
+        // (1 - (nákupní / koncová)) * 100
+        const discount = (1 - (price / retailPrice)) * 100;
+        return discount;
+    }, [price, retailPrice]);
 
     const handleCategoryToggle = (id: number) => {
         setSelectedCategoryIds(prev => prev.includes(id) ? prev.filter(cid => cid !== id) : [...prev, id]);
@@ -170,6 +184,10 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
             vat_rate: vatRate, 
             ean, 
             description,
+            // Nová pole
+            alternative_sku: alternativeSku,
+            retail_price: retailPrice,
+            
             manufacturer_id: manufacturerId ? parseInt(manufacturerId) : null,
             supplier_id: supplierId ? parseInt(supplierId) : null,
             category_ids: selectedCategoryIds,
@@ -187,8 +205,9 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
                     <div className="flex-grow space-y-4">
                         <Input label="Název položky" value={name} onChange={e => setName(e.target.value)} required />
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input label="SKU" value={sku} onChange={e => setSku(e.target.value)} required />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <Input label="SKU (Interní)" value={sku} onChange={e => setSku(e.target.value)} required />
+                            <Input label="Alt. SKU (Dodavatel)" value={alternativeSku} onChange={e => setAlternativeSku(e.target.value)} placeholder="Např. obj. kód" />
                             <Input label="EAN" value={ean} onChange={e => setEan(e.target.value)} />
                         </div>
                     </div>
@@ -275,13 +294,49 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <Input label="Cena bez DPH (Kč)" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" step="0.01" />
-                    <Input label="Sazba DPH (%)" type="number" value={vatRate} onChange={e => setVatRate(Number(e.target.value))} required min="0" />
+                {/* Sekce Ceny */}
+                <div className="p-4 border rounded-lg bg-slate-50">
+                    <h4 className="font-semibold text-slate-700 mb-3">Ceny a Slevy</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                        <Input 
+                            label="Koncová cena (MOC)" 
+                            type="number" 
+                            value={retailPrice} 
+                            onChange={e => setRetailPrice(Number(e.target.value))} 
+                            min="0" 
+                            step="0.01" 
+                            placeholder="Ceníková cena"
+                        />
+                        <Input 
+                            label="Vaše nákupní cena" 
+                            type="number" 
+                            value={price} 
+                            onChange={e => setPrice(Number(e.target.value))} 
+                            required 
+                            min="0" 
+                            step="0.01" 
+                        />
+                        
+                        <div className="mb-2">
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Vypočtená sleva</label>
+                            <div className={`p-2 border rounded font-bold text-center ${calculatedDiscount > 0 ? 'bg-green-100 text-green-800 border-green-200' : 'bg-slate-200 text-slate-600'}`}>
+                                {retailPrice > 0 ? `${calculatedDiscount.toFixed(2)} %` : '-'}
+                            </div>
+                        </div>
+
+                        <Input 
+                            label="DPH (%)" 
+                            type="number" 
+                            value={vatRate} 
+                            onChange={e => setVatRate(Number(e.target.value))} 
+                            required 
+                            min="0" 
+                        />
+                    </div>
                 </div>
                 
                 <div>
-                    <label className="block text-sm font-medium text-slate-700">Popis</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Popis</label>
                     <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="mt-1 block w-full p-2 border bg-white text-slate-900 border-slate-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500"></textarea>
                 </div>
                 

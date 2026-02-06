@@ -89,6 +89,7 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
     return itemsToFilter.filter(item => 
         item.name.toLowerCase().includes(lowercasedTerm) || 
         item.sku.toLowerCase().includes(lowercasedTerm) ||
+        (item.alternative_sku && item.alternative_sku.toLowerCase().includes(lowercasedTerm)) ||
         (item.manufacturer?.name && item.manufacturer.name.toLowerCase().includes(lowercasedTerm)) ||
         (item.supplier?.name && item.supplier.name.toLowerCase().includes(lowercasedTerm))
     );
@@ -157,9 +158,9 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
                   <th className="px-5 py-3 border-b-2 border-slate-300 w-16">Foto</th>
                   <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colItemName')}</th>
                   <th className="px-5 py-3 border-b-2 border-slate-300">Výrobce</th>
-                  <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colSku')}</th>
+                  <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colSku')} / Alt.</th>
                   <th className="px-5 py-3 border-b-2 border-slate-300">{isAdmin ? t('inventory.colTotal') : 'Dostupné ks'}</th>
-                  <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colPrice')}</th>
+                  <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colPrice')} / Sleva</th>
                   <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colCategory')}</th>
                   <th className="px-5 py-3 border-b-2 border-slate-300">{t('inventory.colActions')}</th>
                 </tr>
@@ -169,9 +170,14 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
                     const accessibleQuantity = getAccessibleStock(item);
                     const isLowStock = isAdmin && item.is_monitored_for_stock && item.low_stock_threshold != null && item.total_quantity <= item.low_stock_threshold;
                     
+                    // Výpočet slevy
+                    const discount = (item.price && item.retail_price && item.retail_price > 0) 
+                        ? ((1 - (item.price / item.retail_price)) * 100).toFixed(0) 
+                        : null;
+                    
                     return (
                       <tr key={item.id} className="hover:bg-slate-50">
-                        {/* ZOBRAZENÍ OBRÁZKU - Používáme přímo item.image_url */}
+                        {/* ZOBRAZENÍ OBRÁZKU */}
                         <td className="px-5 py-4 border-b border-slate-200">
                             {item.image_url ? (
                                 <img 
@@ -197,7 +203,10 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
                             {item.supplier && <p className="text-xs text-slate-400 mt-0.5">Dod: {item.supplier.name}</p>}
                         </td>
 
-                        <td className="px-5 py-4 border-b border-slate-200 text-sm"><p className="text-slate-900 whitespace-no-wrap">{item.sku}</p></td>
+                        <td className="px-5 py-4 border-b border-slate-200 text-sm">
+                            <p className="text-slate-900 font-medium whitespace-no-wrap">{item.sku}</p>
+                            {item.alternative_sku && <p className="text-xs text-slate-500 mt-1" title="Alternativní SKU">{item.alternative_sku}</p>}
+                        </td>
                         
                         <td className="px-5 py-4 border-b border-slate-200 text-sm">
                           <span className={`relative inline-block px-3 py-1 font-semibold leading-tight ${isLowStock ? 'text-red-900' : 'text-green-900'}`}>
@@ -205,7 +214,18 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
                             <span className="relative">{accessibleQuantity} ks</span>
                           </span>
                         </td>
-                        <td className="px-5 py-4 border-b border-slate-200 text-sm"><p className="text-slate-900 whitespace-no-wrap">{item.price ? item.price.toLocaleString('cs-CZ', { style: 'currency', currency: 'CZK' }) : 'N/A'}</p></td>
+
+                        <td className="px-5 py-4 border-b border-slate-200 text-sm">
+                            <p className="text-slate-900 font-bold whitespace-no-wrap">
+                                {item.price ? item.price.toLocaleString('cs-CZ', { style: 'currency', currency: 'CZK' }) : 'N/A'}
+                            </p>
+                            {discount && (
+                                <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                                    -{discount}%
+                                </span>
+                            )}
+                        </td>
+
                         <td className="px-5 py-4 border-b border-slate-200 text-sm"><p className="text-slate-900 whitespace-no-wrap">{item.categories?.map(c => c.name).join(', ') || '-'}</p></td>
                         <td className="px-5 py-4 border-b border-slate-200 text-sm">
                            {isAdmin && (

@@ -100,6 +100,7 @@ export interface ClientOut {
     contact_person?: string;
     ico?: string;
     dic?: string;
+    margin_percentage?: number;
 }
 
 export interface CategoryOut {
@@ -147,7 +148,9 @@ export interface InventoryItemOut {
     vat_rate?: number;
     company_id: number;
     is_monitored_for_stock: boolean;
-       low_stock_threshold: number | null;
+    low_stock_threshold: number | null;
+    alternative_sku?: string;
+    retail_price?: number; // Koncová cena (MOC)
 }
 
 export interface WorkTypeOut {

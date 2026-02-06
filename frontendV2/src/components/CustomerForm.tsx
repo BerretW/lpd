@@ -18,6 +18,8 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSave, onCancel, customer 
     const [contactPerson, setContactPerson] = useState('');
     const [ico, setIco] = useState('');
     const [dic, setDic] = useState('');
+    // PŘIDÁNO: Stav pro marži (jako string, aby šlo snadno psát mínus)
+    const [margin, setMargin] = useState<string>('0'); 
 
     useEffect(() => {
         if (customer) {
@@ -29,13 +31,20 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSave, onCancel, customer 
             setContactPerson(customer.contact_person || '');
             setIco(customer.ico || '');
             setDic(customer.dic || '');
+            // PŘIDÁNO: Načtení existující marže
+            setMargin(customer.margin_percentage?.toString() || '0');
         }
     }, [customer]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        const payload: Partial<Omit<Client, 'id' | 'company_id'>> = { name, address };
+        const payload: Partial<Omit<Client, 'id' | 'company_id'>> = { 
+            name, 
+            address,
+            // PŘIDÁNO: Odeslání marže jako číslo
+            margin_percentage: parseFloat(margin) || 0
+        };
         if (email) payload.email = email;
         if (phone) payload.phone = phone;
         if (legalName) payload.legal_name = legalName;
@@ -55,6 +64,17 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSave, onCancel, customer 
               <Input label="Kontaktní osoba" value={contactPerson} onChange={e => setContactPerson(e.target.value)} />
               <Input label="Telefon" value={phone} onChange={e => setPhone(e.target.value)} />
               <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+              
+              {/* PŘIDÁNO: Input pro marži */}
+              <Input 
+                label="Marže (%)" 
+                type="number" 
+                step="0.1" // Povoluje desetinná čísla
+                value={margin} 
+                onChange={e => setMargin(e.target.value)} 
+                placeholder="0"
+              />
+
               <div className="grid grid-cols-2 gap-4 col-span-2">
                 <Input label="IČO" value={ico} onChange={e => setIco(e.target.value)} />
                 <Input label="DIČ" value={dic} onChange={e => setDic(e.target.value)} />

@@ -146,7 +146,16 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                     <ul className="divide-y divide-slate-200">
                         {clients.map(c => (
                             <li key={c.id} className="py-3 flex justify-between items-center">
-                                <div><p className="font-semibold text-black">{c.name}</p><p className="text-sm text-slate-500">{c.address}</p></div>
+                                <div>
+                                    <p className="font-semibold text-black">{c.name}</p>
+                                    <p className="text-sm text-slate-500">{c.address}</p>
+                                    {/* PŘIDÁNO: Zobrazení marže */}
+                                    {c.margin_percentage !== undefined && c.margin_percentage !== 0 && (
+                                        <p className="text-xs text-blue-600 font-medium">
+                                            Marže: {c.margin_percentage > 0 ? '+' : ''}{c.margin_percentage}%
+                                        </p>
+                                    )}
+                                </div>
                                 <div className="space-x-2">
                                     <Button variant="secondary" onClick={() => openModal(c)}>Upravit</Button>
                                     <Button variant="secondary" className="!bg-red-100 !text-red-700 hover:!bg-red-200" onClick={() => setClientToDelete(c)}>
