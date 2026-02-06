@@ -8,18 +8,19 @@ from PyQt6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QTabWidget, QTableWidget, 
     QTableWidgetItem, QHeaderView, QMessageBox, QCheckBox, QDialog, 
     QTextEdit, QFormLayout, QDialogButtonBox, QRadioButton, QButtonGroup,
-    QDateEdit, QListWidget, QListWidgetItem, QDoubleSpinBox, QAbstractItemView
+    QDateEdit, QListWidget, QListWidgetItem, QDoubleSpinBox, QAbstractItemView,
+    QGroupBox, QComboBox, QScrollArea, QFrame
 )
 from PyQt6.QtCore import QSettings, Qt, QDate
-from PyQt6.QtGui import QTextDocument, QColor, QPalette, QColor
+from PyQt6.QtGui import QTextDocument, QColor, QPalette, QFont, QIcon
 from PyQt6.QtPrintSupport import QPrinter
 
 from config import ORGANIZATION_NAME, APP_NAME
 from api import ApiClient
 
-# --- STYLING (Oprava barev pro Windows Dark Mode) ---
+# --- STYLING ---
 def apply_dark_theme(app):
-    """Nastaví konzistentní tmavý vzhled, aby se barvy nebily."""
+    """Nastaví konzistentní tmavý vzhled."""
     app.setStyle("Fusion")
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
@@ -37,19 +38,26 @@ def apply_dark_theme(app):
     palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
     app.setPalette(palette)
     
-    # CSS pro specifické widgety, aby byly čitelné
     app.setStyleSheet("""
         QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }
-        QLineEdit, QDateEdit, QDoubleSpinBox { 
+        QLineEdit, QDateEdit, QDoubleSpinBox, QComboBox { 
             background-color: #ffffff; 
             color: #000000; 
             border: 1px solid #555;
             padding: 4px;
+            border-radius: 3px;
         }
         QTableWidget { gridline-color: #555555; }
         QHeaderView::section { background-color: #353535; color: white; border: 1px solid #555; }
         QListWidget { background-color: #252525; color: white; }
         QLabel { color: white; }
+        QGroupBox { 
+            border: 1px solid #555; 
+            margin-top: 20px; 
+            font-weight: bold; 
+            color: white; 
+        }
+        QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 3px; }
         QPushButton { 
             background-color: #0275d8; 
             color: white; 
@@ -58,29 +66,42 @@ def apply_dark_theme(app):
         }
         QPushButton:hover { background-color: #025aa5; }
         QPushButton:disabled { background-color: #555; color: #aaa; }
+        
+        /* Červené tlačítko pro smazání */
+        QPushButton.btn-danger { background-color: #d9534f; }
+        QPushButton.btn-danger:hover { background-color: #c9302c; }
+        
+        /* Zelené tlačítko */
+        QPushButton.btn-success { background-color: #5cb85c; }
+        QPushButton.btn-success:hover { background-color: #449d44; }
     """)
 
-# --- POMOCNÉ TŘÍDY ---
+# --- HELPERS ---
+
+def flatten_categories(categories, prefix=""):
+    """Převede strom kategorií na plochý seznam pro ComboBox"""
+    flat = []
+    for cat in categories:
+        name = f"{prefix}{cat['name']}"
+        flat.append((cat['id'], name))
+        if cat.get('children'):
+            flat.extend(flatten_categories(cat['children'], prefix=f"{name} > "))
+    return flat
 
 class GenericFormDialog(QDialog):
+    """Jednoduchý dialog pro rychlé vytvoření (např. nové zboží)"""
     def __init__(self, parent, title, fields, data=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(400, 200)
         self.inputs = {}
         self.data = data or {}
-        
         layout = QFormLayout(self)
-        
         for label, key in fields.items():
             inp = QLineEdit()
-            # Pokud máme data, předvyplníme
-            if self.data and key in self.data:
-                inp.setText(str(self.data[key]))
-                
+            if self.data and key in self.data: inp.setText(str(self.data[key]))
             layout.addRow(label, inp)
             self.inputs[key] = inp
-            
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -90,16 +111,216 @@ class GenericFormDialog(QDialog):
         out = {}
         for key, inp in self.inputs.items():
             val = inp.text().strip()
-            # Základní konverze pro čísla
             if key in ['price', 'margin_percentage']:
-                try:
-                    val = float(val)
-                except ValueError:
-                    val = 0.0
+                try: val = float(val)
+                except: val = 0.0
             out[key] = val
         return out
 
-# --- FAKTURAČNÍ WIZARD ---
+# --- POKROČILÝ EDITOR KLIENTA ---
+
+class ClientEditorDialog(QDialog):
+    def __init__(self, parent, api, client_id, client_data):
+        super().__init__(parent)
+        self.api = api
+        self.client_id = client_id
+        self.client_data = client_data or {}
+        self.setWindowTitle("Upravit zákazníka")
+        self.resize(700, 800)
+        
+        # Hlavní layout
+        main_layout = QVBoxLayout(self)
+        
+        # Scroll Area, kdyby bylo okno malé
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content_widget = QWidget()
+        self.layout = QVBoxLayout(content_widget)
+        scroll.setWidget(content_widget)
+        main_layout.addWidget(scroll)
+
+        # 1. SEKCE: ZÁKLADNÍ ÚDAJE
+        gb_basic = QGroupBox("Základní údaje")
+        gb_layout = QVBoxLayout(gb_basic)
+        
+        self.inputs = {}
+        
+        # Helper pro řádek s inputem
+        def add_input(label, key, val=None):
+            lbl = QLabel(label)
+            inp = QLineEdit()
+            if val is not None: inp.setText(str(val))
+            gb_layout.addWidget(lbl)
+            gb_layout.addWidget(inp)
+            self.inputs[key] = inp
+            return inp
+
+        # Řádky formuláře
+        add_input("Jméno / Název firmy", "name", self.client_data.get("name"))
+        add_input("Oficiální název (pokud se liší)", "legal_name", self.client_data.get("legal_name", ""))
+        add_input("Adresa", "address", self.client_data.get("address", ""))
+        
+        # Dva sloupce pro kontakt
+        row_contact = QHBoxLayout()
+        v1 = QVBoxLayout(); v1.addWidget(QLabel("Kontaktní osoba")); 
+        inp_cp = QLineEdit(self.client_data.get("contact_person", "")); v1.addWidget(inp_cp); row_contact.addLayout(v1)
+        self.inputs["contact_person"] = inp_cp
+        
+        v2 = QVBoxLayout(); v2.addWidget(QLabel("Telefon")); 
+        inp_ph = QLineEdit(self.client_data.get("phone", "")); v2.addWidget(inp_ph); row_contact.addLayout(v2)
+        self.inputs["phone"] = inp_ph
+        gb_layout.addLayout(row_contact)
+
+        # Email a Marže
+        row_mail = QHBoxLayout()
+        v3 = QVBoxLayout(); v3.addWidget(QLabel("Email")); 
+        inp_em = QLineEdit(self.client_data.get("email", "")); v3.addWidget(inp_em); row_mail.addLayout(v3)
+        self.inputs["email"] = inp_em
+        
+        v4 = QVBoxLayout(); v4.addWidget(QLabel("Výchozí marže (%)")); 
+        inp_mar = QDoubleSpinBox(); inp_mar.setRange(0, 1000); 
+        inp_mar.setValue(float(self.client_data.get("margin_percentage") or 0))
+        v4.addWidget(inp_mar); row_mail.addLayout(v4)
+        self.inputs["margin_percentage"] = inp_mar
+        gb_layout.addLayout(row_mail)
+        
+        # ICO / DIC
+        row_ids = QHBoxLayout()
+        v5 = QVBoxLayout(); v5.addWidget(QLabel("IČO")); 
+        inp_ico = QLineEdit(self.client_data.get("ico", "")); v5.addWidget(inp_ico); row_ids.addLayout(v5)
+        self.inputs["ico"] = inp_ico
+        
+        v6 = QVBoxLayout(); v6.addWidget(QLabel("DIČ")); 
+        inp_dic = QLineEdit(self.client_data.get("dic", "")); v6.addWidget(inp_dic); row_ids.addLayout(v6)
+        self.inputs["dic"] = inp_dic
+        gb_layout.addLayout(row_ids)
+        
+        self.layout.addWidget(gb_basic)
+
+        # 2. SEKCE: SPECIFICKÉ MARŽE
+        gb_margins = QGroupBox("Specifické marže podle kategorií")
+        margins_layout = QVBoxLayout(gb_margins)
+        
+        # Přidávací řádek
+        add_box = QFrame()
+        add_box.setStyleSheet("background-color: #3a3a3a; border-radius: 5px; padding: 5px;")
+        add_layout = QHBoxLayout(add_box)
+        
+        self.cat_combo = QComboBox()
+        self.load_categories_to_combo() # Naplnit kategorie
+        
+        self.margin_spin = QDoubleSpinBox()
+        self.margin_spin.setRange(0, 1000)
+        self.margin_spin.setSuffix(" %")
+        self.margin_spin.setPlaceholderText("Marže %")
+        
+        btn_add_margin = QPushButton("+ Přidat")
+        btn_add_margin.clicked.connect(self.add_specific_margin)
+        
+        add_layout.addWidget(QLabel("Přidat výjimku:"))
+        add_layout.addWidget(self.cat_combo, 2)
+        add_layout.addWidget(self.margin_spin, 1)
+        add_layout.addWidget(btn_add_margin)
+        margins_layout.addWidget(add_box)
+        
+        # Tabulka marží
+        self.margin_table = QTableWidget()
+        self.margin_table.setColumnCount(3)
+        self.margin_table.setHorizontalHeaderLabels(["Kategorie", "Marže", "Akce"])
+        self.margin_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.margin_table.setStyleSheet("QTableWidget { background-color: #ffffff; color: black; }") 
+        # Zde dáváme bílé pozadí pro tabulku marží, aby vypadala jako "input list"
+        
+        margins_layout.addWidget(self.margin_table)
+        self.layout.addWidget(gb_margins)
+        
+        # Načíst existující marže
+        self.load_margins()
+
+        # TLAČÍTKA DOLE
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("Zrušit")
+        btn_save = QPushButton("Uložit zákazníka")
+        btn_save.setProperty("class", "btn-success") # Pro styling (volitelné)
+        btn_save.setStyleSheet("background-color: #d9534f; font-weight: bold; padding: 8px;") # Červené jako na screenu
+        
+        btn_cancel.clicked.connect(self.reject)
+        btn_save.clicked.connect(self.save_client)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_save)
+        main_layout.addLayout(btn_layout)
+
+    def load_categories_to_combo(self):
+        cats_tree = self.api.get_categories()
+        flat_cats = flatten_categories(cats_tree)
+        self.cat_combo.clear()
+        self.cat_combo.addItem("-- Vyberte kategorii --", None)
+        for cat_id, name in flat_cats:
+            self.cat_combo.addItem(name, cat_id)
+
+    def load_margins(self):
+        margins = self.api.get_client_margins(self.client_id)
+        self.margin_table.setRowCount(0)
+        self.margin_table.setRowCount(len(margins))
+        
+        for i, m in enumerate(margins):
+            # Kategorie
+            self.margin_table.setItem(i, 0, QTableWidgetItem(m['category_name']))
+            # Marže
+            item_marg = QTableWidgetItem(f"{m['margin_percentage']} %")
+            item_marg.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.margin_table.setItem(i, 1, item_marg)
+            
+            # Tlačítko smazat
+            btn_del = QPushButton("Smazat")
+            btn_del.setProperty("class", "btn-danger")
+            btn_del.setStyleSheet("color: red; border: none; font-weight: bold;")
+            btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+            # Uložíme si ID kategorie pro mazání
+            btn_del.clicked.connect(lambda _, cat_id=m['category_id']: self.delete_margin(cat_id))
+            self.margin_table.setCellWidget(i, 2, btn_del)
+
+    def add_specific_margin(self):
+        cat_id = self.cat_combo.currentData()
+        if not cat_id:
+            QMessageBox.warning(self, "Chyba", "Vyberte kategorii")
+            return
+        
+        margin = self.margin_spin.value()
+        try:
+            self.api.set_client_margin(self.client_id, cat_id, margin)
+            self.load_margins() # Refresh tabulky
+            self.margin_spin.setValue(0)
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", str(e))
+
+    def delete_margin(self, category_id):
+        if QMessageBox.question(self, "Smazat", "Opravdu smazat tuto marži?") == QMessageBox.StandardButton.Yes:
+            try:
+                self.api.delete_client_margin(self.client_id, category_id)
+                self.load_margins()
+            except Exception as e:
+                QMessageBox.critical(self, "Chyba", str(e))
+
+    def save_client(self):
+        # Sbírání dat z formuláře
+        data = {}
+        for key, inp in self.inputs.items():
+            if isinstance(inp, QLineEdit):
+                data[key] = inp.text().strip()
+            elif isinstance(inp, QDoubleSpinBox):
+                data[key] = inp.value()
+        
+        try:
+            self.api.update_client(self.client_id, data)
+            self.accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba při ukládání", str(e))
+
+
+# --- FAKTURAČNÍ DIALOGY (WIZARD) ---
 
 class InvoiceConfigDialog(QDialog):
     """Krok 1: Výběr rozsahu"""
@@ -113,7 +334,6 @@ class InvoiceConfigDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("<h3>Rozsah fakturace</h3>"))
         
-        # Radio buttons
         self.rb_all = QRadioButton("Celá zakázka")
         self.rb_period = QRadioButton("Dle období")
         self.rb_tasks = QRadioButton("Dle úkolů")
@@ -149,11 +369,9 @@ class InvoiceConfigDialog(QDialog):
         tl.addWidget(self.task_list)
         layout.addWidget(self.tasks_widget)
         
-        # Eventy
         self.bg.buttonClicked.connect(self.on_mode_change)
-        self.on_mode_change() # Init stav
+        self.on_mode_change()
         
-        # Tlačítka
         btn_layout = QHBoxLayout()
         btn_ok = QPushButton("Vygenerovat náhled")
         btn_ok.setStyleSheet("background-color: #d9534f; font-weight: bold;")
@@ -161,7 +379,6 @@ class InvoiceConfigDialog(QDialog):
         
         btn_ok.clicked.connect(self.accept)
         btn_cancel.clicked.connect(self.reject)
-        
         btn_layout.addStretch()
         btn_layout.addWidget(btn_cancel)
         btn_layout.addWidget(btn_ok)
@@ -212,13 +429,12 @@ class InvoiceEditorDialog(QDialog):
         
         layout = QVBoxLayout(self)
         
-        # Horní lišta
         top_bar = QHBoxLayout()
         top_bar.addWidget(QLabel(f"<h2>{report_data.get('work_order_name')}</h2>"))
         top_bar.addStretch()
         
         self.btn_mark = QPushButton("Označit jako fakturované")
-        self.btn_mark.setStyleSheet("background-color: #5cb85c;")
+        self.btn_mark.setProperty("class", "btn-success")
         self.btn_mark.clicked.connect(self.mark_as_billed)
         
         self.btn_print = QPushButton("Tisk / PDF")
@@ -228,7 +444,6 @@ class InvoiceEditorDialog(QDialog):
         top_bar.addWidget(self.btn_print)
         layout.addLayout(top_bar)
         
-        # Tabulky
         layout.addWidget(QLabel("<b>PRÁCE</b>"))
         self.table_work = QTableWidget()
         self.init_table(self.table_work, ["Popis", "Hodiny", "Sazba/hod (Edit)", "Celkem"])
@@ -239,40 +454,28 @@ class InvoiceEditorDialog(QDialog):
         self.init_table(self.table_mat, ["Položka", "Množství", "Cena/ks (Edit)", "Celkem"])
         layout.addWidget(self.table_mat)
         
-        # Globální úpravy (žlutý box)
         adj_widget = QWidget()
-        # CSS nastaví černý text uvnitř žlutého boxu, aby byl čitelný
         adj_widget.setStyleSheet("""
-            background-color: #fff3cd; 
-            border-radius: 5px; 
-            padding: 10px; 
-            color: black;
+            background-color: #fff3cd; border-radius: 5px; padding: 10px; color: black;
         """)
         adj_layout = QHBoxLayout(adj_widget)
-        
         lbl_adj = QLabel("Globální úprava ceny (Sleva / Přirážka):")
-        lbl_adj.setStyleSheet("color: black; font-weight: bold;") # Vynutit černou barvu písma
-        
+        lbl_adj.setStyleSheet("color: black; font-weight: bold;") 
         self.spin_adj = QDoubleSpinBox()
         self.spin_adj.setRange(-100, 1000)
         self.spin_adj.setSuffix(" %")
         self.spin_adj.valueChanged.connect(self.recalculate)
-        
         adj_layout.addWidget(lbl_adj)
         adj_layout.addWidget(self.spin_adj)
         adj_layout.addStretch()
         layout.addWidget(adj_widget)
         
-        # Součty
         self.lbl_total = QLabel("<h1>Celkem k úhradě: 0 Kč</h1>")
         self.lbl_total.setAlignment(Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self.lbl_total)
         
-        # Naplnění dat
         self.populate_tables()
         self.recalculate()
-        
-        # Připojení signálů změny po naplnění dat
         self.table_work.itemChanged.connect(self.on_item_changed)
         self.table_mat.itemChanged.connect(self.on_item_changed)
 
@@ -280,81 +483,61 @@ class InvoiceEditorDialog(QDialog):
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        # Nastavení stylu pro editovatelné buňky (bílé pozadí, černý text)
-        table.setStyleSheet("""
-            QTableWidget { background-color: #252525; color: white; gridline-color: #555; }
-            QTableWidget::item:selected { background-color: #2a82da; }
-        """)
+        # Editovatelné buňky bílé
+        table.setStyleSheet("QTableWidget { background-color: #252525; color: white; gridline-color: #555; }")
 
     def populate_tables(self):
-        # Práce
         logs = self.report_data.get("time_logs", [])
         self.table_work.setRowCount(len(logs))
         for i, log in enumerate(logs):
             self.set_item(self.table_work, i, 0, f"{log['task_name']}", editable=False)
             self.set_item(self.table_work, i, 1, str(log['hours']), editable=False)
-            self.set_item(self.table_work, i, 2, str(log['rate']), editable=True) # Sazba
+            self.set_item(self.table_work, i, 2, str(log['rate']), editable=True)
             self.set_item(self.table_work, i, 3, str(log['total_price']), editable=False)
 
-        # Materiál
         items = self.report_data.get("used_items", [])
         self.table_mat.setRowCount(len(items))
         for i, item in enumerate(items):
             self.set_item(self.table_mat, i, 0, f"{item['item_name']}", editable=False)
             self.set_item(self.table_mat, i, 1, str(item['quantity']), editable=False)
-            self.set_item(self.table_mat, i, 2, str(item['unit_price_sold']), editable=True) # Cena/ks
+            self.set_item(self.table_mat, i, 2, str(item['unit_price_sold']), editable=True)
             self.set_item(self.table_mat, i, 3, str(item['total_price']), editable=False)
 
     def set_item(self, table, row, col, text, editable=False):
         item = QTableWidgetItem(text)
         if not editable:
             item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            item.setForeground(QColor("#cccccc")) # Šedivější pro read-only
+            item.setForeground(QColor("#cccccc"))
         else:
-            # Editovatelné buňky - výrazné
             item.setBackground(QColor("#ffffff"))
             item.setForeground(QColor("#000000"))
             item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        
         table.setItem(row, col, item)
 
     def on_item_changed(self, item):
-        # Ochrana proti rekurzi (změna -> přepočet -> změna buňky 'Celkem' -> loop)
         table = item.tableWidget()
-        if item.column() != 2: # Reagujeme jen na změnu ceny/sazby
-            return
-            
+        if item.column() != 2: return
         row = item.row()
         try:
             val_per_unit = float(item.text().replace(",", "."))
             qty = float(table.item(row, 1).text())
             new_total = round(val_per_unit * qty, 2)
-            
-            # Dočasně vypnout signály, abychom mohli zapsat do tabulky bez vyvolání loopu
             table.blockSignals(True)
             table.item(row, 3).setText(str(new_total))
             table.blockSignals(False)
-            
             self.recalculate()
-        except ValueError:
-            pass # Ignorovat nečísla
+        except ValueError: pass
 
     def recalculate(self):
         total = 0.0
-        # Práce
         for i in range(self.table_work.rowCount()):
             try: total += float(self.table_work.item(i, 3).text())
             except: pass
-        
-        # Materiál
         for i in range(self.table_mat.rowCount()):
             try: total += float(self.table_mat.item(i, 3).text())
             except: pass
-            
-        # Globální úprava
         adj = self.spin_adj.value()
         grand_total = total * (1 + adj / 100.0)
-        
         self.lbl_total.setText(f"<h1>Celkem k úhradě: {grand_total:.2f} Kč</h1>")
 
     def mark_as_billed(self):
@@ -362,11 +545,9 @@ class InvoiceEditorDialog(QDialog):
             self.api.update_work_order_status(self.work_order_id, "billed")
             QMessageBox.information(self, "OK", "Označeno jako fakturované.")
             self.btn_mark.setEnabled(False)
-        except Exception as e:
-            QMessageBox.critical(self, "Chyba", str(e))
+        except Exception as e: QMessageBox.critical(self, "Chyba", str(e))
 
     def print_pdf(self):
-        # Jednoduché HTML pro tisk
         html = f"""
         <h1>Faktura</h1>
         <h2>{self.report_data.get('work_order_name')}</h2>
@@ -374,23 +555,18 @@ class InvoiceEditorDialog(QDialog):
         <table width="100%" border="1" cellspacing="0" cellpadding="4">
             <tr><th>Popis</th><th>Množství</th><th>Cena/mj</th><th>Celkem</th></tr>
         """
-        # Práce do HTML
         html += "<tr><td colspan='4'><b>PRÁCE</b></td></tr>"
         for i in range(self.table_work.rowCount()):
             html += f"<tr><td>{self.table_work.item(i,0).text()}</td><td>{self.table_work.item(i,1).text()}</td><td>{self.table_work.item(i,2).text()}</td><td>{self.table_work.item(i,3).text()}</td></tr>"
-        
-        # Materiál do HTML
         html += "<tr><td colspan='4'><b>MATERIÁL</b></td></tr>"
         for i in range(self.table_mat.rowCount()):
             html += f"<tr><td>{self.table_mat.item(i,0).text()}</td><td>{self.table_mat.item(i,1).text()}</td><td>{self.table_mat.item(i,2).text()}</td><td>{self.table_mat.item(i,3).text()}</td></tr>"
-            
         html += f"""
         </table>
         <br>
         <h3 align="right">Úprava ceny: {self.spin_adj.value()} %</h3>
         <h1 align="right">{self.lbl_total.text()}</h1>
         """
-        
         from PyQt6.QtWidgets import QFileDialog
         fn, _ = QFileDialog.getSaveFileName(self, "Uložit PDF", "faktura.pdf", "PDF (*.pdf)")
         if fn:
@@ -402,7 +578,7 @@ class InvoiceEditorDialog(QDialog):
             doc.print(printer)
             QMessageBox.information(self, "Hotovo", "Uloženo.")
 
-# --- LOGIN & MAIN WINDOW ---
+# --- MAIN WINDOW ---
 
 class LoginWindow(QWidget):
     def __init__(self, api_client, on_success):
@@ -416,23 +592,19 @@ class LoginWindow(QWidget):
         self.setWindowTitle("Login")
         self.setGeometry(400, 300, 300, 200)
         layout = QVBoxLayout(self)
-        
         self.email = QLineEdit()
         self.email.setPlaceholderText("Email")
         self.pwd = QLineEdit()
         self.pwd.setPlaceholderText("Heslo")
         self.pwd.setEchoMode(QLineEdit.EchoMode.Password)
         self.chk = QCheckBox("Pamatovat si mě")
-        
         btn = QPushButton("Přihlásit")
         btn.clicked.connect(self.do_login)
-        
         layout.addWidget(QLabel("<h2>Přihlášení</h2>"))
         layout.addWidget(self.email)
         layout.addWidget(self.pwd)
         layout.addWidget(self.chk)
         layout.addWidget(btn)
-        
         if self.settings.value("email"):
             self.email.setText(self.settings.value("email"))
             self.chk.setChecked(True)
@@ -445,31 +617,20 @@ class LoginWindow(QWidget):
         data = self.api.login(email, pwd)
         if data:
             self.api.set_token(data['access_token'])
-            # Dekódování JWT pro CompanyID
             try:
-                # Jednoduchý padding fix a decode
                 part = data['access_token'].split('.')[1]
                 part += '=' * (-len(part) % 4)
                 payload = json.loads(base64.urlsafe_b64decode(part))
-                
-                # Získání company_id (předpokládáme pole tenants)
                 tenants = payload.get('tenants', [])
-                if tenants:
-                    self.api.set_company_id(tenants[0])
-                else:
-                    raise Exception("Žádná firma přiřazena uživateli")
-                    
+                if tenants: self.api.set_company_id(tenants[0])
+                else: raise Exception("Žádná firma")
                 if self.chk.isChecked():
                     self.settings.setValue("email", email)
                     self.settings.setValue("password", pwd)
-                else:
-                    self.settings.clear()
-                    
+                else: self.settings.clear()
                 self.on_success()
-            except Exception as e:
-                QMessageBox.critical(self, "Chyba", f"Chyba tokenu: {e}")
-        else:
-            QMessageBox.warning(self, "Chyba", "Špatné údaje")
+            except Exception as e: QMessageBox.critical(self, "Chyba", f"Chyba tokenu: {e}")
+        else: QMessageBox.warning(self, "Chyba", "Špatné údaje")
 
 class MainWindow(QMainWindow):
     def __init__(self, api):
@@ -477,25 +638,20 @@ class MainWindow(QMainWindow):
         self.api = api
         self.setWindowTitle("Účetní Systém")
         self.resize(1100, 700)
-        
         cw = QWidget()
         self.setCentralWidget(cw)
         layout = QVBoxLayout(cw)
-        
         tabs = QTabWidget()
         layout.addWidget(tabs)
         
-        # 1. Zákazníci
         self.tab_clients = QWidget()
         self.setup_clients(self.tab_clients)
         tabs.addTab(self.tab_clients, "Zákazníci")
         
-        # 2. Sklad
         self.tab_inv = QWidget()
         self.setup_inventory(self.tab_inv)
         tabs.addTab(self.tab_inv, "Sklad")
         
-        # 3. Zakázky
         self.tab_wo = QWidget()
         self.setup_wo(self.tab_wo)
         tabs.addTab(self.tab_wo, "Zakázky")
@@ -510,14 +666,12 @@ class MainWindow(QMainWindow):
         h.addWidget(btn_ref)
         h.addStretch()
         l.addLayout(h)
-        
         self.tbl_clients = QTableWidget()
         self.tbl_clients.setColumnCount(4)
         self.tbl_clients.setHorizontalHeaderLabels(["ID", "Jméno", "Email", "IČO"])
         self.tbl_clients.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tbl_clients.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         l.addWidget(self.tbl_clients)
-        
         btn_ref.clicked.connect(self.load_clients)
         btn_add.clicked.connect(self.add_client)
         self.tbl_clients.doubleClicked.connect(self.edit_client)
@@ -541,25 +695,17 @@ class MainWindow(QMainWindow):
             except Exception as e: QMessageBox.critical(self, "Chyba", str(e))
 
     def edit_client(self):
-        # OPRAVENO: Nyní se načtou data z API
         row = self.tbl_clients.currentRow()
         if row < 0: return
         cid = self.tbl_clients.item(row, 0).text()
-        
-        client_data = self.api.get_client(cid)
-        if not client_data:
-            QMessageBox.critical(self, "Chyba", "Nepodařilo se načíst detail klienta.")
-            return
-
-        # Mapování klíčů (API vrací 'name', 'email', formulář chce 'Jméno' atd.)
-        fields = {"Jméno": "name", "Email": "email", "IČO": "ico", "Adresa": "address"}
-        dlg = GenericFormDialog(self, "Editace klienta", fields, data=client_data)
-        
-        if dlg.exec():
-            try:
-                self.api.update_client(cid, dlg.get_data())
+        try:
+            client_data = self.api.get_client(cid)
+            # POUŽITÍ NOVÉHO DIALOGU
+            dlg = ClientEditorDialog(self, self.api, cid, client_data)
+            if dlg.exec():
                 self.load_clients()
-            except Exception as e: QMessageBox.critical(self, "Chyba", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nelze načíst klienta: {e}")
 
     # --- SKLAD ---
     def setup_inventory(self, tab):
@@ -571,13 +717,11 @@ class MainWindow(QMainWindow):
         h.addWidget(btn_ref)
         h.addStretch()
         l.addLayout(h)
-        
         self.tbl_inv = QTableWidget()
         self.tbl_inv.setColumnCount(4)
         self.tbl_inv.setHorizontalHeaderLabels(["ID", "Název", "SKU", "Cena"])
         self.tbl_inv.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         l.addWidget(self.tbl_inv)
-        
         btn_ref.clicked.connect(self.load_inv)
         btn_add.clicked.connect(self.add_inv)
         self.load_inv()
@@ -607,13 +751,11 @@ class MainWindow(QMainWindow):
         h.addWidget(btn_ref)
         h.addStretch()
         l.addLayout(h)
-        
         self.tbl_wo = QTableWidget()
         self.tbl_wo.setColumnCount(5)
         self.tbl_wo.setHorizontalHeaderLabels(["ID", "Název", "Klient", "Status", "Akce"])
         self.tbl_wo.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         l.addWidget(self.tbl_wo)
-        
         btn_ref.clicked.connect(self.load_wo)
         self.load_wo()
 
@@ -626,7 +768,6 @@ class MainWindow(QMainWindow):
             cname = wo['client']['name'] if wo.get('client') else ""
             self.tbl_wo.setItem(i, 2, QTableWidgetItem(cname))
             self.tbl_wo.setItem(i, 3, QTableWidgetItem(wo['status']))
-            
             btn = QPushButton("Fakturovat")
             btn.clicked.connect(lambda ch, wid=wo['id']: self.open_invoice(wid))
             self.tbl_wo.setCellWidget(i, 4, btn)
@@ -640,21 +781,17 @@ class MainWindow(QMainWindow):
                 dlg_edit = InvoiceEditorDialog(self, report, cfg, self.api, wid)
                 dlg_edit.exec()
                 self.load_wo()
-            except Exception as e:
-                QMessageBox.critical(self, "Chyba", f"Chyba při generování: {e}")
+            except Exception as e: QMessageBox.critical(self, "Chyba", f"Chyba: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    apply_dark_theme(app) # APLIKOVÁNÍ STYLU
-    
+    apply_dark_theme(app)
     api = ApiClient()
-    
     def on_login():
         login.close()
         main = MainWindow(api)
         main.show()
         app._main = main
-        
     login = LoginWindow(api, on_login)
     login.show()
     sys.exit(app.exec())
