@@ -1,4 +1,5 @@
 from pydantic import BaseModel, ConfigDict
+from typing import Optional # <--- Přidat import
 
 class WorkTypeBase(BaseModel):
     name: str
@@ -6,6 +7,12 @@ class WorkTypeBase(BaseModel):
 
 class WorkTypeCreateIn(WorkTypeBase):
     pass
+
+# --- PŘIDÁNO ---
+class WorkTypeUpdateIn(BaseModel):
+    name: Optional[str] = None
+    rate: Optional[float] = None
+# ----------------
 
 class WorkTypeOut(WorkTypeBase):
     id: int

@@ -16,6 +16,10 @@ from app.db.models import (
 from app.schemas.inventory import InventoryItemCreateIn, InventoryItemOut, InventoryItemUpdateIn
 from app.core.dependencies import require_company_access, require_admin_access
 
+from app.schemas.audit_log import AuditLogOut # <--- Přidat
+from app.db.models import InventoryAuditLog # <--- Přidat (už tam pravděpodobně je)
+
+
 UPLOAD_DIRECTORY = Path("static/images/inventory")
 UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
@@ -237,3 +241,34 @@ async def delete_inventory_item(
 
     await db.delete(item)
     await db.commit()
+
+# --- PŘIDÁNO (vlož např. před endpoint pro smazání položky) ---
+@router.get("/{item_id}/history", response_model=List[AuditLogOut], summary="Získání historie pohybů položky")
+async def get_inventory_item_history(
+    company_id: int,
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_admin_access) # Historii vidí obvykle jen admin/manager
+):
+    """
+    Vrátí chronologicky seřazenou historii (audit log) pro konkrétní skladovou položku.
+    """
+    # Nejprve ověříme, že položka existuje a patří firmě
+    await get_item_or_404(item_id, company_id, db)
+
+    stmt = (
+        select(InventoryAuditLog)
+        .where(
+            InventoryAuditLog.company_id == company_id,
+            InventoryAuditLog.item_id == item_id
+        )
+        .options(
+            selectinload(InventoryAuditLog.user),
+            selectinload(InventoryAuditLog.inventory_item)
+        )
+        .order_by(InventoryAuditLog.timestamp.desc())
+    )
+    
+    result = await db.execute(stmt)
+    return result.scalars().all()
+# ----------------

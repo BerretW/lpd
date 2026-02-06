@@ -85,7 +85,11 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
 
     const handleSaveWorkType = async (rateData: any) => {
         try {
-            const action = editingItem ? Promise.resolve() : api.createWorkType(companyId, rateData); // Update not implemented in API file
+            // FIX: Nyní voláme api.updateWorkType pokud editujeme
+            const action = editingItem 
+                ? api.updateWorkType(companyId, editingItem.id, rateData) 
+                : api.createWorkType(companyId, rateData);
+            
             await action;
             fetchData();
             closeModal();

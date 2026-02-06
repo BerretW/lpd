@@ -13,6 +13,8 @@ import { useI18n } from '../I18nContext';
 import Input from './common/Input';
 import LocationManager from './LocationManager';
 import EanTerminal from './EanTerminal';
+import InventoryHistoryModal from './InventoryHistoryModal'; // Už tam asi je, ale ujistěte se
+
 
 interface InventoryProps {
   companyId: number;
@@ -35,6 +37,7 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
   const isAdmin = role === RoleEnum.Admin || role === RoleEnum.Owner;
 
   const [view, setView] = useState<'items' | 'locations' | 'categories'>('items');
+  const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [categories, setCategories] = useState<CategoryOut[]>([]);
   const [accessibleLocations, setAccessibleLocations] = useState<LocationOut[]>([]);
@@ -230,10 +233,18 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
                         <td className="px-5 py-4 border-b border-slate-200 text-sm">
                            {isAdmin && (
                                 <div className="flex space-x-2">
-                                     <Button variant="secondary" onClick={() => { setEditingItem(item); setIsFormModalOpen(true); }}>{t('inventory.edit')}</Button>
-                                    <Button variant="secondary" onClick={() => setAdjustingItem(item)}>{t('inventory.stockOperations')}</Button>
+                                    <Button variant="secondary" onClick={() => { setEditingItem(item); setIsFormModalOpen(true); }} title={t('inventory.edit')}>
+                                        <Icon name="fa-pencil-alt" />
+                                    </Button>
+                                    <Button variant="secondary" onClick={() => setAdjustingItem(item)} title={t('inventory.stockOperations')}>
+                                        <Icon name="fa-box-open" />
+                                    </Button>
+                                    {/* NOVÉ TLAČÍTKO PRO HISTORII */}
+                                    <Button variant="secondary" onClick={() => setHistoryItem(item)} title="Historie pohybů">
+                                        <Icon name="fa-history" />
+                                    </Button>
                                 </div>
-                           )}
+                            )}
                         </td>
                       </tr>
                     );
@@ -260,6 +271,13 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
       {adjustingItem && (
         <AdjustStockModal item={adjustingItem} companyId={companyId} onClose={() => setAdjustingItem(null)} onSave={() => { setAdjustingItem(null); fetchData(false); }} />
       )}
+      {historyItem && (
+    <InventoryHistoryModal 
+        companyId={companyId} 
+        item={historyItem} 
+        onClose={() => setHistoryItem(null)} 
+    />
+)}
       {error && <ErrorModal title="Chyba skladu" message={error} onClose={() => setError(null)} />}
     </div>
   );

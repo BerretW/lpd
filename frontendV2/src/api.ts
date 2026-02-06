@@ -473,3 +473,37 @@ export const deleteClientCategoryMargin = async (cid: number, clientId: number, 
     }
     return fetchApi(`/companies/${cid}/clients/${clientId}/margins/${categoryId}`, { method: 'DELETE' });
 };
+
+// 1. Najděte sekci s WorkTypes a přidejte updateWorkType
+export const updateWorkType = (cid: number, id: number, data: any): Promise<WorkTypeOut> => {
+    if (USE_MOCKS) {
+        return Promise.resolve({ ...data, id, company_id: cid });
+    }
+    return fetchApi(`/companies/${cid}/work-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+};
+
+// 2. Přidejte funkci pro získání historie skladu (kamkoliv k inventory funkcím)
+export const getInventoryHistory = (cid: number, itemId: number): Promise<AuditLogOut[]> => {
+    if (USE_MOCKS) {
+        // Mock data pro historii
+        return Promise.resolve([
+            {
+                id: 1,
+                timestamp: new Date().toISOString(),
+                action: AuditLogAction.QuantityAdjusted,
+                details: "Inventura - naskladnění",
+                user: { id: 1, email: "admin@profitechnik.cz" },
+                inventory_item: { id: itemId, name: "Položka", sku: "123" }
+            },
+            {
+                id: 2,
+                timestamp: new Date(Date.now() - 86400000).toISOString(),
+                action: AuditLogAction.LocationPlaced,
+                details: "Přesun na Hlavní sklad",
+                user: { id: 1, email: "admin@profitechnik.cz" },
+                inventory_item: { id: itemId, name: "Položka", sku: "123" }
+            }
+        ] as AuditLogOut[]);
+    }
+    return fetchApi(`/companies/${cid}/inventory/${itemId}/history`);
+};
