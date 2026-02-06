@@ -236,8 +236,94 @@ export const createClient = (cid: number, data: any): Promise<ClientOut> => {
     return fetchApi(`/companies/${cid}/clients`, { method: 'POST', body: JSON.stringify(data) });
 };
 
+const calculateItemPriceWithMargin = (
+    item: InventoryItemOut, 
+    client: ClientOut | undefined, 
+    clientMargins: Record<string, number>
+): { price: number, margin: number } => {
+    if (!client) return { price: item.price || 0, margin: 0 };
+
+    let appliedMargin = client.margin_percentage || 0; // Výchozí marže klienta
+    if (item.category_ids && item.category_ids.length > 0) {
+        for (const catId of item.category_ids) {
+            const key = `${client.id}_${catId}`;
+            if (clientMargins[key] !== undefined) {
+                appliedMargin = clientMargins[key];
+                break; // Našli jsme specifickou marži, končíme
+            }
+        }
+    }
+
+    const basePrice = item.price || 0;
+    // Výpočet: Nákupka * (1 + marže/100)
+    const finalPrice = basePrice * (1 + appliedMargin / 100);
+
+    return { price: finalPrice, margin: appliedMargin };
+};
+
+
 export const getBillingReport = (cid: number, wid: number, s?: string, e?: string): Promise<BillingReportOut> => {
-    if (USE_MOCKS) return Promise.resolve({ work_order_name: "Zakázka", client_name: "Klient", total_hours: 10, total_price_work: 5000, total_price_inventory: 2000, grand_total: 7000, time_logs: [], used_items: [] });
+    if (USE_MOCKS) {
+        const wo = mockStore.workOrders.find(w => w.id === wid);
+        if (!wo) return Promise.reject("Work Order not found");
+
+        const client = mockStore.clients.find(c => c.id === wo.client_id);
+        
+        // 1. Spočítat práci
+        // (Zjednodušená logika pro mock - v reálu se sčítají time logy * sazba)
+        let totalHours = 40; 
+        let totalPriceWork = totalHours * 500; // Příklad sazby
+
+        // 2. Spočítat materiál s MARŽEMI
+        let totalPriceInventory = 0;
+        const billingItems: any[] = [];
+
+        // Simulace: Projdeme všechny úkoly a jejich materiály
+        // (V reálném mockStore.workOrders musíme zajistit, že tasks mají used_items)
+        // Pro účely dema vygenerujeme data, pokud v mocku chybí
+        const mockUsedItems = [
+            { id: 1, inventory_item_id: 1, quantity: 10, task_name: "Instalace" },
+            { id: 2, inventory_item_id: 2, quantity: 5, task_name: "Zapojení" }
+        ];
+
+        mockUsedItems.forEach(used => {
+            const invItem = mockStore.inventory.find(i => i.id === used.inventory_item_id);
+            if (invItem) {
+                // Zde voláme logiku výpočtu ceny!
+                const { price, margin } = calculateItemPriceWithMargin(invItem as any, client as any, mockClientMargins);
+                
+                const lineTotal = price * used.quantity;
+                totalPriceInventory += lineTotal;
+
+                billingItems.push({
+                    item_id: invItem.id,
+                    item_name: invItem.name,
+                    task_name: used.task_name,
+                    quantity: used.quantity,
+                    unit_cost: invItem.price, // Nákupní cena
+                    margin_applied: margin,   // Použitá marže
+                    unit_price_sold: price,   // Prodejní cena
+                    total_price: lineTotal,
+                    category_name: invItem.categories?.[0]?.name || "Obecné"
+                });
+            }
+        });
+
+        return Promise.resolve({
+            work_order_name: wo.name,
+            client_name: client ? client.name : "Neznámý klient",
+            total_hours: totalHours,
+            total_price_work: totalPriceWork,
+            total_price_inventory: totalPriceInventory,
+            grand_total: totalPriceWork + totalPriceInventory,
+            time_logs: [
+                { work_type_name: "Montáž", task_name: "Instalace", hours: 10, rate: 500, total_price: 5000 },
+                { work_type_name: "Servis", task_name: "Zapojení", hours: 30, rate: 500, total_price: 15000 }
+            ], 
+            used_items: billingItems
+        });
+    }
+    // Reálné API volání
     return fetchApi(`/companies/${cid}/work-orders/${wid}/billing-report${s ? `?start_date=${s}` : ''}${e ? `${s ? '&' : '?'}end_date=${e}` : ''}`);
 };
 

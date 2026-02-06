@@ -1,10 +1,7 @@
-# app/schemas/shared.py
+# backend/app/schemas/shared.py
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import date
-
-# Zde budou schémata, která jsou potřeba ve více modulech,
-# aby se předešlo cyklickým importům.
 
 class BillingReportTimeLogOut(BaseModel):
     """Detail jednoho časového záznamu pro report."""
@@ -22,7 +19,12 @@ class BillingReportUsedItemOut(BaseModel):
     item_name: str
     sku: str
     quantity: int
-    price: Optional[float] = None
-    total_price: Optional[float] = None
+    
+    # --- NOVÁ POLE PRO KALKULACI ---
+    unit_cost: float        # Nákupní cena (InventoryItem.price)
+    margin_applied: float   # Použitá marže v %
+    unit_price_sold: float  # Prodejní cena za kus (Cost * Marže)
+    
+    total_price: float      # Celková cena řádku
     task_name: str
     model_config = ConfigDict(from_attributes=True)

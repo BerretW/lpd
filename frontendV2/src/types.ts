@@ -452,3 +452,28 @@ export interface ClientCategoryMargin {
     category_name?: string; // Název pro zobrazení
     margin_percentage: number;
 }
+
+export interface BillingReportItem {
+    item_id: number;
+    item_name: string;
+    task_name: string;
+    quantity: number;
+    unit_cost: number; // Nákupní cena
+    margin_applied: number; // Použitá marže v %
+    unit_price_sold: number; // Prodejní cena za kus
+    total_price: number; // Celkem
+    category_name?: string;
+}
+
+// Upravíme BillingReportOut
+export interface BillingReportOut {
+    work_order_name: string;
+    client_name: string | null;
+    total_hours: number;
+    total_price_work: number;
+    total_price_inventory: number;
+    grand_total: number;
+    time_logs: any[];
+    // Změna z any[] na konkrétní typ
+    used_items: BillingReportItem[]; 
+}
