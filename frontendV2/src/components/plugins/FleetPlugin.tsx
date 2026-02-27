@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { VehicleOut, VehicleLogOut, UserOut, RoleEnum } from '../../types';
 import * as api from '../../api';
 import Button from '../common/Button';
@@ -7,6 +7,7 @@ import Icon from '../common/Icon';
 import Modal from '../common/Modal';
 import Card from '../common/Card';
 import ErrorMessage from '../common/ErrorMessage';
+import ConfirmModal from '../common/ConfirmModal';
 import { useAuth } from '../../AuthContext';
 
 interface FleetPluginProps {
@@ -20,14 +21,19 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
     const [activeTab, setActiveTab] = useState<'vehicles' | 'logs'>('vehicles');
     const [vehicles, setVehicles] = useState<VehicleOut[]>([]);
     const [logs, setLogs] = useState<VehicleLogOut[]>([]);
-    const [users, setUsers] = useState<UserOut[]>([]); // Pro přiřazení řidiče
+    const [users, setUsers] = useState<UserOut[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Filter states
+    const [filterVehicleId, setFilterVehicleId] = useState<string>('');
 
     // Modals state
     const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
     const [isLogModalOpen, setIsLogModalOpen] = useState(false);
     const [editingVehicle, setEditingVehicle] = useState<VehicleOut | null>(null);
+    const [editingLog, setEditingLog] = useState<VehicleLogOut | null>(null);
+    const [logToDelete, setLogToDelete] = useState<VehicleLogOut | null>(null);
 
     // Form states
     const [formData, setFormData] = useState<any>({});
@@ -38,7 +44,7 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
         try {
             const [vData, lData, uData] = await Promise.all([
                 api.getVehicles(companyId),
-                api.getFleetLogs(companyId),
+                api.getFleetLogs(companyId), // Načteme vše, filtrujeme na klientovi pro rychlost
                 isAdmin ? api.getMembers(companyId) : Promise.resolve([])
             ]);
             setVehicles(vData);
@@ -55,6 +61,8 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
         fetchData();
     }, [fetchData]);
 
+    // --- VEHICLE ACTIONS ---
+
     const handleSaveVehicle = async () => {
         try {
             if (editingVehicle) {
@@ -69,17 +77,35 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
         }
     };
 
+    const openVehicleModal = (v?: VehicleOut) => {
+        setEditingVehicle(v || null);
+        setFormData(v ? { ...v } : { current_km: 0 });
+        setIsVehicleModalOpen(true);
+    };
+
+    // --- LOG ACTIONS ---
+
     const handleSaveLog = async () => {
         try {
-            // Najdeme auto pro validaci km
-            const vehicle = vehicles.find(v => v.id === parseInt(formData.vehicle_id));
-            const startKm = vehicle ? vehicle.current_km : 0;
-            
-            await api.createFleetLog(companyId, {
-                ...formData,
-                start_km: startKm, // Start km se bere automaticky z aktuálního stavu auta
-                end_km: parseFloat(formData.end_km)
-            });
+            if (editingLog) {
+                // Update existujícího záznamu
+                await api.updateFleetLog(companyId, editingLog.id, {
+                    ...formData,
+                    vehicle_id: parseInt(formData.vehicle_id),
+                    start_km: parseFloat(formData.start_km),
+                    end_km: parseFloat(formData.end_km)
+                });
+            } else {
+                // Vytvoření nového
+                const vehicle = vehicles.find(v => v.id === parseInt(formData.vehicle_id));
+                const startKm = vehicle ? vehicle.current_km : 0;
+                
+                await api.createFleetLog(companyId, {
+                    ...formData,
+                    start_km: startKm,
+                    end_km: parseFloat(formData.end_km)
+                });
+            }
             setIsLogModalOpen(false);
             fetchData();
         } catch (e: any) {
@@ -87,25 +113,50 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
         }
     };
 
-    const openVehicleModal = (v?: VehicleOut) => {
-        setEditingVehicle(v || null);
-        setFormData(v ? { ...v } : { current_km: 0 });
-        setIsVehicleModalOpen(true);
+    const handleDeleteLog = async () => {
+        if (!logToDelete) return;
+        try {
+            await api.deleteFleetLog(companyId, logToDelete.id);
+            setLogToDelete(null);
+            fetchData();
+        } catch (e: any) {
+            alert("Smazání se nezdařilo: " + e.message);
+        }
     };
 
-    const openLogModal = () => {
-        setFormData({ 
-            travel_date: new Date().toISOString().split('T')[0],
-            vehicle_id: vehicles.length > 0 ? vehicles[0].id : '',
-            end_km: '' 
-        });
+    const openLogModal = (log?: VehicleLogOut) => {
+        setEditingLog(log || null);
+        if (log) {
+            // Editace
+            setFormData({
+                vehicle_id: log.vehicle_id,
+                travel_date: log.travel_date.split('T')[0], // Ořezat čas
+                start_location: log.start_location,
+                end_location: log.end_location,
+                start_km: log.start_km,
+                end_km: log.end_km,
+                notes: log.notes || ''
+            });
+        } else {
+            // Nový
+            setFormData({ 
+                travel_date: new Date().toISOString().split('T')[0],
+                vehicle_id: vehicles.length > 0 ? vehicles[0].id : '',
+                end_km: '' 
+            });
+        }
         setIsLogModalOpen(true);
     };
 
-    const getDriverName = (id: number) => {
-        // V reálné aplikaci bychom potřebovali seznam všech userů, nebo to tahat z API joinem
-        // Zde pro jednoduchost zobrazíme ID nebo "Já" pokud sedí s přihlášeným
-        return `Řidič ID: ${id}`; 
+    // --- FILTERING ---
+    const filteredLogs = useMemo(() => {
+        if (!filterVehicleId) return logs;
+        return logs.filter(l => l.vehicle_id === parseInt(filterVehicleId));
+    }, [logs, filterVehicleId]);
+
+    const getDriverLabel = (id: number) => {
+        const u = users.find(user => user.id === id);
+        return u ? u.email : `ID: ${id}`;
     };
 
     return (
@@ -132,6 +183,7 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
             <ErrorMessage message={error} />
             {loading && <p>Načítání...</p>}
 
+            {/* --- ZÁLOŽKA VOZIDLA --- */}
             {activeTab === 'vehicles' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {vehicles.map(v => (
@@ -154,6 +206,13 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
                                 <p><Icon name="fa-tachometer-alt" className="w-5 text-center"/> {v.current_km.toLocaleString()} km</p>
                                 <p><Icon name="fa-calendar-check" className="w-5 text-center"/> STK: {v.next_stk_date ? new Date(v.next_stk_date).toLocaleDateString() : 'Nenastaveno'}</p>
                                 <p><Icon name="fa-wrench" className="w-5 text-center"/> Servis při: {v.next_service_km ? v.next_service_km.toLocaleString() + ' km' : 'Nenastaveno'}</p>
+                                {v.assigned_user_id && <p className="text-xs text-blue-600 mt-2 font-semibold">Přiděleno: {getDriverLabel(v.assigned_user_id)}</p>}
+                            </div>
+                            
+                            <div className="mt-4 pt-3 border-t border-slate-100 text-right">
+                                <button onClick={() => { setActiveTab('logs'); setFilterVehicleId(v.id.toString()); }} className="text-xs text-blue-600 hover:underline">
+                                    Zobrazit historii jízd
+                                </button>
                             </div>
                         </Card>
                     ))}
@@ -161,40 +220,82 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
                 </div>
             )}
 
+            {/* --- ZÁLOŽKA KNIHA JÍZD --- */}
             {activeTab === 'logs' && (
-                <div className="bg-white rounded-lg shadow overflow-hidden">
-                    <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-50">
-                            <tr>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Datum</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Vozidlo</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Trasa</th>
-                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Vzdálenost</th>
-                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Stav tachometru</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-slate-200 text-sm">
-                            {logs.map(log => {
-                                const vehicle = vehicles.find(v => v.id === log.vehicle_id);
-                                return (
-                                    <tr key={log.id}>
-                                        <td className="px-4 py-3 whitespace-nowrap">{new Date(log.travel_date).toLocaleDateString()}</td>
-                                        <td className="px-4 py-3 font-medium">{vehicle ? vehicle.license_plate : 'Neznámé'}</td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center">
-                                                <span>{log.start_location}</span>
-                                                <Icon name="fa-arrow-right" className="mx-2 text-slate-400 text-xs"/>
-                                                <span>{log.end_location}</span>
-                                            </div>
-                                            {log.notes && <p className="text-xs text-slate-500 mt-1">{log.notes}</p>}
-                                        </td>
-                                        <td className="px-4 py-3 text-right font-bold">{(log.end_km - log.start_km).toFixed(1)} km</td>
-                                        <td className="px-4 py-3 text-right text-slate-500">{log.end_km.toLocaleString()} km</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                <div className="space-y-4">
+                    {/* Filtrovací lišta */}
+                    <div className="flex items-center space-x-4 bg-white p-3 rounded-lg border border-slate-200">
+                        <span className="text-sm font-semibold text-slate-700">Filtr:</span>
+                        <select 
+                            value={filterVehicleId} 
+                            onChange={(e) => setFilterVehicleId(e.target.value)}
+                            className="p-2 border rounded text-sm bg-slate-50"
+                        >
+                            <option value="">Všechna vozidla</option>
+                            {vehicles.map(v => (
+                                <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.license_plate})</option>
+                            ))}
+                        </select>
+                        {filterVehicleId && (
+                            <button onClick={() => setFilterVehicleId('')} className="text-xs text-red-500 hover:underline">Zrušit filtr</button>
+                        )}
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                        <table className="min-w-full divide-y divide-slate-200">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Datum</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Vozidlo</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Řidič</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Trasa</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Vzdálenost</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Tachometr</th>
+                                    {isAdmin && <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Akce</th>}
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-slate-200 text-sm">
+                                {filteredLogs.map(log => {
+                                    const vehicle = vehicles.find(v => v.id === log.vehicle_id);
+                                    return (
+                                        <tr key={log.id} className="hover:bg-slate-50">
+                                            <td className="px-4 py-3 whitespace-nowrap">{new Date(log.travel_date).toLocaleDateString()}</td>
+                                            <td className="px-4 py-3 font-medium">
+                                                {vehicle ? `${vehicle.brand} ${vehicle.model}` : 'Neznámé'}
+                                                <div className="text-xs text-slate-400 font-mono">{vehicle?.license_plate}</div>
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-600">
+                                                {isAdmin ? getDriverLabel(log.driver_id) : (log.driver_id === users.find(u => u.email === getDriverLabel(log.driver_id))?.id ? 'Já' : 'Kolega')}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center">
+                                                    <span>{log.start_location}</span>
+                                                    <Icon name="fa-arrow-right" className="mx-2 text-slate-400 text-xs"/>
+                                                    <span>{log.end_location}</span>
+                                                </div>
+                                                {log.notes && <p className="text-xs text-slate-500 mt-1 italic">{log.notes}</p>}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-bold">{(log.end_km - log.start_km).toFixed(1)} km</td>
+                                            <td className="px-4 py-3 text-right text-slate-500">{log.end_km.toLocaleString()} km</td>
+                                            {isAdmin && (
+                                                <td className="px-4 py-3 text-right space-x-2">
+                                                    <button onClick={() => openLogModal(log)} className="text-blue-600 hover:text-blue-800" title="Upravit">
+                                                        <Icon name="fa-pencil-alt" />
+                                                    </button>
+                                                    <button onClick={() => setLogToDelete(log)} className="text-red-600 hover:text-red-800" title="Smazat">
+                                                        <Icon name="fa-trash" />
+                                                    </button>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                })}
+                                {filteredLogs.length === 0 && (
+                                    <tr><td colSpan={7} className="text-center p-8 text-slate-500">Žádné záznamy k zobrazení.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
 
@@ -241,16 +342,24 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
 
             {/* MODAL: Log Trip */}
             {isLogModalOpen && (
-                <Modal title="Zapsat jízdu" onClose={() => setIsLogModalOpen(false)}>
+                <Modal title={editingLog ? "Upravit záznam jízdy" : "Zapsat jízdu"} onClose={() => setIsLogModalOpen(false)}>
                     <div className="space-y-4">
+                        {editingLog && (
+                            <div className="bg-yellow-50 p-3 rounded text-sm text-yellow-800 border border-yellow-200 mb-2">
+                                <Icon name="fa-info-circle" className="mr-2"/>
+                                Upravujete historický záznam. Změna kilometrů zde <strong>neaktualizuje</strong> automaticky tachometr vozidla ani navazující jízdy.
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Vozidlo</label>
                             <select 
                                 className="w-full p-2 border rounded"
                                 value={formData.vehicle_id}
                                 onChange={e => setFormData({...formData, vehicle_id: parseInt(e.target.value)})}
+                                disabled={!!editingLog} // Při editaci neměníme auto
                             >
-                                {vehicles.map(v => <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.license_plate}) - {v.current_km} km</option>)}
+                                {vehicles.map(v => <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.license_plate})</option>)}
                             </select>
                         </div>
                         
@@ -261,23 +370,43 @@ const FleetPlugin: React.FC<FleetPluginProps> = ({ companyId }) => {
                             <Input label="Kam" value={formData.end_location || ''} onChange={e => setFormData({...formData, end_location: e.target.value})} required placeholder="Město / Adresa" />
                         </div>
 
-                        <Input 
-                            label="Stav tachometru po dojezdu (km)" 
-                            type="number" 
-                            value={formData.end_km} 
-                            onChange={e => setFormData({...formData, end_km: e.target.value})} 
-                            required 
-                            placeholder="Např. 150200"
-                        />
-                        <p className="text-xs text-slate-500">Počáteční stav bude automaticky načten z karty vozidla.</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input 
+                                label="Počáteční stav (km)" 
+                                type="number" 
+                                value={formData.start_km} 
+                                onChange={e => setFormData({...formData, start_km: e.target.value})} 
+                                required 
+                                disabled={!editingLog && !isAdmin} // Při novém záznamu se bere automaticky, ale admin může editovat
+                            />
+                            <Input 
+                                label="Konečný stav (km)" 
+                                type="number" 
+                                value={formData.end_km} 
+                                onChange={e => setFormData({...formData, end_km: e.target.value})} 
+                                required 
+                            />
+                        </div>
+                        {!editingLog && <p className="text-xs text-slate-500">Počáteční stav je předvyplněn z karty vozidla.</p>}
 
                         <Input label="Poznámka" value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} />
 
-                        <div className="flex justify-end pt-4">
-                            <Button onClick={handleSaveLog}>Zapsat</Button>
+                        <div className="flex justify-end pt-4 space-x-2">
+                            <Button variant="secondary" onClick={() => setIsLogModalOpen(false)}>Zrušit</Button>
+                            <Button onClick={handleSaveLog}>Uložit</Button>
                         </div>
                     </div>
                 </Modal>
+            )}
+
+            {/* DELETE CONFIRMATION */}
+            {logToDelete && (
+                <ConfirmModal 
+                    title="Smazat jízdu"
+                    message="Opravdu chcete smazat tento záznam z knihy jízd? Tato akce je nevratná."
+                    onConfirm={handleDeleteLog}
+                    onCancel={() => setLogToDelete(null)}
+                />
             )}
         </div>
     );

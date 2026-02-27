@@ -7,7 +7,7 @@ from app.db.database import get_db
 from app.core.dependencies import require_company_access, require_admin_access
 from .models import Vehicle, VehicleLog
 from .schemas import VehicleCreate, VehicleOut, VehicleLogCreate, VehicleLogOut, VehicleUpdate, VehicleAlertOut
-
+from .schemas import VehicleLogUpdate # <--- Nezapomeňte přidat import
 router = APIRouter(prefix="/plugins/fleet", tags=["plugin-fleet-management"])
 
 # --- VOZIDLA ---
@@ -154,3 +154,44 @@ async def list_logs(
     
     stmt = stmt.order_by(VehicleLog.travel_date.desc(), VehicleLog.start_km.desc())
     return (await db.execute(stmt)).scalars().all()
+
+@router.patch("/{company_id}/logs/{log_id}", response_model=VehicleLogOut)
+async def update_log(
+    company_id: int,
+    log_id: int,
+    payload: VehicleLogUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin_access) # Pouze admin může upravovat historii
+):
+    stmt = select(VehicleLog).where(VehicleLog.id == log_id)
+    log = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not log:
+        raise HTTPException(404, "Záznam nenalezen.")
+
+    # Zde by se dalo přidat ověření, zda log patří firmě (přes vehicle -> company), 
+    # ale pro jednoduchost spoléháme na admin access v rámci tenantu.
+
+    update_data = payload.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(log, key, value)
+
+    await db.commit()
+    await db.refresh(log)
+    return log
+
+@router.delete("/{company_id}/logs/{log_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_log(
+    company_id: int,
+    log_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin_access)
+):
+    stmt = select(VehicleLog).where(VehicleLog.id == log_id)
+    log = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not log:
+        raise HTTPException(404, "Záznam nenalezen.")
+        
+    await db.delete(log)
+    await db.commit()

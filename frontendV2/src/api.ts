@@ -634,3 +634,9 @@ export const createFleetLog = (cid: number, data: any): Promise<VehicleLogOut> =
 
 export const getFleetAlerts = (cid: number): Promise<VehicleAlertOut[]> => 
     fetchApi(`/plugins/fleet/${cid}/alerts`);
+
+export const updateFleetLog = (cid: number, logId: number, data: any): Promise<VehicleLogOut> => 
+    fetchApi(`/plugins/fleet/${cid}/logs/${logId}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const deleteFleetLog = (cid: number, logId: number): Promise<void> => 
+    fetchApi(`/plugins/fleet/${cid}/logs/${logId}`, { method: 'DELETE' });

@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { TimeLogOut, TimeLogEntryType, WorkOrderOut, WorkTypeOut, TaskPreviewOut, TimeLogCreateIn } from '../types';
 import Modal from './common/Modal';
 import Button from './common/Button';
 import Input from './common/Input';
 import ErrorMessage from './common/ErrorMessage';
 import * as api from '../api';
+// --- ZMĚNA: Import ExtensionPoint ---
+import { ExtensionPoint } from '../lib/PluginSystem';
 
 interface TimeLogModalProps {
     date: Date;
     entryType: TimeLogEntryType;
-    timeLog?: TimeLogOut; // for editing
-    initialData?: any; // for pre-filling new entries
+    timeLog?: TimeLogOut;
+    initialData?: any;
     onClose: () => void;
     onSave: () => void;
     companyId: number;
@@ -18,7 +20,7 @@ interface TimeLogModalProps {
 }
 
 const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, initialData, onClose, onSave, companyId, dailyLogs }) => {
-    // Form state
+    // ... (stávající state proměnné) ...
     const [startTime, setStartTime] = useState('08:00');
     const [endTime, setEndTime] = useState('16:30');
     const [notes, setNotes] = useState('');
@@ -28,20 +30,27 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
     const [breakMinutes, setBreakMinutes] = useState(0);
     const [isOvertime, setIsOvertime] = useState(false);
     
-    // New state for creating tasks
     const [isCreatingNewTask, setIsCreatingNewTask] = useState(false);
     const [newTaskName, setNewTaskName] = useState('');
 
-    // Data for dropdowns
     const [workOrdersWithHours, setWorkOrdersWithHours] = useState<(WorkOrderOut & { worked_hours: number })[]>([]);
     const [workTypes, setWorkTypes] = useState<WorkTypeOut[]>([]);
 
-    // Component state
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // --- ZMĚNA: Ref pro uložení akcí z pluginů ---
+    // Pluginy se sem zaregistrují a my je zavoláme po úspěšném uložení docházky
+    const postSaveActions = useRef<(() => Promise<void>)[]>([]);
+
+    const registerPostSaveAction = (action: () => Promise<void>) => {
+        postSaveActions.current.push(action);
+    };
+    // ---------------------------------------------
+
     const isWorkEntry = entryType === TimeLogEntryType.Work;
 
+    // ... (stávající useEffecty pro načítání dat zůstávají stejné) ...
     useEffect(() => {
         const loadDropdownData = async () => {
             if (!isWorkEntry) {
@@ -55,7 +64,6 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
                 ]);
                 setWorkTypes(wtData);
                 
-                // Fetch hours for work orders
                 const reportPromises = woData.map(wo => 
                     api.getBillingReport(companyId, wo.id).catch(() => ({ total_hours: 0 }))
                 );
@@ -79,7 +87,6 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
 
     useEffect(() => {
         if (timeLog) {
-            // Editing existing log
             setStartTime(timeLog.start_time.substring(11, 16));
             setEndTime(timeLog.end_time.substring(11, 16));
             setNotes(timeLog.notes || '');
@@ -96,7 +103,6 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
                 }
             }
         } else if (initialData) {
-            // Creating new log with initial data
             if (initialData.startTime) setStartTime(initialData.startTime);
             if (initialData.endTime) setEndTime(initialData.endTime);
             if (initialData.notes) setNotes(initialData.notes);
@@ -110,10 +116,8 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
 
     const toggleCreateNewTask = () => {
         if (isCreatingNewTask) {
-            // Switching back to select
             setNewTaskName('');
         } else {
-            // Switching to create new
             setTaskId('');
         }
         setIsCreatingNewTask(!isCreatingNewTask);
@@ -180,6 +184,14 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
             } else {
                 await api.createTimeLog(companyId, payload);
             }
+
+            // --- ZMĚNA: Spuštění akcí z pluginů ---
+            // Tady se zavolá náš plugin pro zápis auta, pokud je aktivní
+            if (postSaveActions.current.length > 0) {
+                await Promise.all(postSaveActions.current.map(action => action()));
+            }
+            // --------------------------------------
+
             onSave();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Uložení záznamu se nezdařilo.');
@@ -188,6 +200,9 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
     
     const title = timeLog ? 'Upravit záznam' : 'Nový záznam';
 
+    // Helper to find selected work order details (for the plugin)
+    const selectedWorkOrder = workOrdersWithHours.find(wo => wo.id.toString() === workOrderId);
+
     return (
         <Modal title={title} onClose={onClose}>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -195,6 +210,7 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
                 
                 {isWorkEntry && (
                     <>
+                        {/* ... (stávající kód formuláře) ... */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Zakázka</label>
                             <select value={workOrderId} onChange={e => { setWorkOrderId(e.target.value); setTaskId(''); setNewTaskName(''); setIsCreatingNewTask(false); }} className="w-full p-2 border rounded bg-white text-slate-900" disabled={loading}>
@@ -257,6 +273,21 @@ const TimeLogModal: React.FC<TimeLogModalProps> = ({ date, entryType, timeLog, i
                     <label className="block text-sm font-medium text-slate-700 mb-1">Poznámky</label>
                     <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full p-2 border border-slate-300 rounded-md shadow-sm bg-white text-slate-900"></textarea>
                 </div>
+
+                {/* --- ZMĚNA: Zde vkládáme ExtensionPoint --- */}
+                {/* Ten umožní pluginům vykreslit svá pole (např. knihu jízd) */}
+                {isWorkEntry && (
+                    <ExtensionPoint 
+                        name="time-log-form-fields" 
+                        context={{ 
+                            companyId, 
+                            workOrder: selectedWorkOrder, // Předáváme vybranou zakázku, aby plugin věděl adresu
+                            date,
+                            registerPostSaveAction
+                        }} 
+                    />
+                )}
+                {/* ------------------------------------------- */}
                 
                 <div className="flex justify-end pt-4 space-x-2">
                     <Button type="button" variant="secondary" onClick={onClose}>Zrušit</Button>

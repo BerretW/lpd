@@ -13,15 +13,27 @@ class VehicleBase(BaseModel):
     next_stk_date: Optional[date] = None
     assigned_user_id: Optional[int] = None
 
-class VehicleCreate(VehicleBase):
-    pass
-
 class VehicleUpdate(BaseModel):
+    license_plate: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    vin: Optional[str] = None
     current_km: Optional[float] = None
     next_service_km: Optional[float] = None
     next_stk_date: Optional[date] = None
     assigned_user_id: Optional[int] = None
-    # Další pole dle potřeby...
+class VehicleCreate(VehicleBase):
+    pass
+
+class VehicleLogUpdate(BaseModel):
+    travel_date: Optional[date] = None
+    start_location: Optional[str] = None
+    end_location: Optional[str] = None
+    start_km: Optional[float] = None
+    end_km: Optional[float] = None
+    notes: Optional[str] = None
+    vehicle_id: Optional[int] = None 
+    driver_id: Optional[int] = None
 
 class VehicleOut(VehicleBase):
     id: int
