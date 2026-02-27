@@ -15,3 +15,4 @@ cryptography
 aiosmtplib
 httpx
 APScheduler==3.10.4
+openpyxl

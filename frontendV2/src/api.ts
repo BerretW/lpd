@@ -56,7 +56,7 @@ const mockClientMargins: Record<string, number> = {
 
 
 const mockStore = {
-    company: { id: 1, name: "ProfiTechnik s.r.o.", slug: "profitechnik", legal_name: "ProfiTechnik Elektro s.r.o.", address: "Průmyslová 145, 370 01 České Budějovice", ico: "12345678", dic: "CZ12345678" },
+    company: { id: 1, name: "Appartus", slug: "profitechnik", legal_name: "Appartus", address: "Průmyslová 145, 370 01 České Budějovice", ico: "12345678", dic: "CZ12345678" },
     members: [
         { user: { id: 1, email: "admin@profitechnik.cz" }, role: RoleEnum.Owner },
         { user: { id: 2, email: "technik1@profitechnik.cz" }, role: RoleEnum.Member }

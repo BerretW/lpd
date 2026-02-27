@@ -12,6 +12,7 @@ import WorkReport from './WorkReport';
 import ErrorModal from './common/ErrorModal';
 import ManageTaskMaterialsModal from './ManageTaskMaterialsModal';
 import MyTasksView from './MyTasksView';
+import { ExtensionPoint } from '../lib/PluginSystem';
 
 interface AttendanceCalendarProps {
     companyId: number;
@@ -321,6 +322,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ companyId, user
                         {isDatePickerOpen && <DatePicker currentDate={selectedDate} onSelectDate={(d) => { setSelectedDate(d); setIsDatePickerOpen(false); }} onClose={() => setIsDatePickerOpen(false)} />}
                     </div>
                     <Button onClick={() => changeWeek(1)} variant="secondary" className="!bg-gray-800 !text-white border-none">Týden <Icon name="fa-chevron-right" className="ml-2"/></Button>
+                    <div className="absolute right-4 top-4">
+
+        </div>
                 </div>
                 {activeTab === 'calendar' && (
                     <div className="flex justify-around mt-4">
@@ -342,6 +346,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ companyId, user
                     <button onClick={() => setActiveTab('tasks')} className={`w-full p-2 rounded-md font-semibold transition-colors flex items-center justify-center ${activeTab === 'tasks' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>
                         <Icon name="fa-tasks" className="mr-2" /> Moje úkoly
                     </button>
+                               <ExtensionPoint 
+               name="attendance-header-actions" 
+               context={{ 
+                   companyId, 
+                   currentDate: selectedDate, // Předáme aktuálně vybrané datum pluginu
+                   userId: viewingUserId      // I uživatele, pokud je vybrán
+               }} 
+           />
                 </div>
             </div>
 

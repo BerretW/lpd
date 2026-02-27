@@ -154,7 +154,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setCurrentView, 
             >
                 <Icon name={isCollapsed ? 'fa-arrow-right-to-bracket' : 'fa-arrow-left-to-bracket'} className="w-6 h-6" />
             </button>
-          {!isCollapsed && <p className="text-center text-slate-400 text-sm whitespace-nowrap">&copy; 2024 ProfiTechnik s.r.o.</p>}
+          {!isCollapsed && <p className="text-center text-slate-400 text-sm whitespace-nowrap">&copy; 2026 Appartus</p>}
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">

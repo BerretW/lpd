@@ -19,6 +19,7 @@ from app.db.models import User, Company, Membership, RoleEnum
 from app.core.plugin_manager import PluginManager
 from plugins import db_backup
 from plugins import customer_stats  # Import pluginu pro zákaznické statistiky (příklad)
+from plugins import attendance_export  # Import pluginu pro export docházky (příklad)
 
 # Importy všech API routerů
 from app.routers import (
@@ -117,7 +118,9 @@ async def lifespan(app: FastAPI):
     pm = PluginManager(app)
     # Zde registrujeme jednotlivé pluginy
     pm.register_plugin(db_backup)
-    pm.register_plugin(customer_stats)  # Registrace pluginu pro zákaznické statistiky (příklad)
+    pm.register_plugin(customer_stats)
+    pm.register_plugin(attendance_export)
+
     
     # Spuštění staré logiky triggerů na pozadí
     asyncio.create_task(periodic_trigger_check())
