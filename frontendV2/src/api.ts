@@ -6,7 +6,7 @@ import {
     AuditLogOut, TimeLogStatus, CompanyOut, TimeLogEntryType, BillingReportOut, 
     ServiceReportDataOut, ClientBillingReportOut, CategoryOut, LocationOut, 
     SmtpSettingsOut, TriggerOut, PickingOrderOut, PickingOrderStatus, PickingOrderCreateIn,
-    PohodaSettingsIn
+    PohodaSettingsIn, VehicleOut, VehicleLogOut, VehicleAlertOut
 } from './types';
 import { ManufacturerOut, SupplierOut } from './types';
 import { ClientCategoryMargin } from './types';
@@ -615,3 +615,22 @@ export const syncClientsFromPohoda = async (cid: number) => {
     }
     return await response.json();
 };
+
+// --- FLEET MANAGEMENT API ---
+export const getVehicles = (cid: number): Promise<VehicleOut[]> => 
+    fetchApi(`/plugins/fleet/${cid}/vehicles`);
+
+export const createVehicle = (cid: number, data: any): Promise<VehicleOut> => 
+    fetchApi(`/plugins/fleet/${cid}/vehicles`, { method: 'POST', body: JSON.stringify(data) });
+
+export const updateVehicle = (cid: number, vid: number, data: any): Promise<VehicleOut> => 
+    fetchApi(`/plugins/fleet/${cid}/vehicles/${vid}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const getFleetLogs = (cid: number, vid?: number): Promise<VehicleLogOut[]> => 
+    fetchApi(`/plugins/fleet/${cid}/logs${vid ? `?vehicle_id=${vid}` : ''}`);
+
+export const createFleetLog = (cid: number, data: any): Promise<VehicleLogOut> => 
+    fetchApi(`/plugins/fleet/${cid}/logs`, { method: 'POST', body: JSON.stringify(data) });
+
+export const getFleetAlerts = (cid: number): Promise<VehicleAlertOut[]> => 
+    fetchApi(`/plugins/fleet/${cid}/alerts`);

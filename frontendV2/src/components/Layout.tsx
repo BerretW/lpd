@@ -138,6 +138,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setCurrentView, 
                 <NavItem isCollapsed={isCollapsed} view={View.Jobs} label={t('navigation.jobs')} icon="fa-briefcase" currentView={currentView} setCurrentView={setCurrentView} />
             )}
             <NavItem isCollapsed={isCollapsed} view={View.Inventory} label={t('navigation.inventory')} icon="fa-warehouse" currentView={currentView} setCurrentView={setCurrentView} />
+            <NavItem isCollapsed={isCollapsed} view={View.Fleet} label="Vozový park" icon="fa-car" currentView={currentView} setCurrentView={setCurrentView} />
+            
             <NavItem isCollapsed={isCollapsed} view={View.PickingOrders} label={t('navigation.pickingOrders')} icon="fa-people-carry" currentView={currentView} setCurrentView={setCurrentView} />
             <NavItem isCollapsed={isCollapsed} view={View.Planning} label={t('navigation.planning')} icon="fa-calendar-check" currentView={currentView} setCurrentView={setCurrentView} />
             {isAdmin && (

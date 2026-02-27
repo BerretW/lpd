@@ -10,16 +10,16 @@ import Admin from './components/Admin';
 import { useAuth } from './AuthContext';
 import { useI18n } from './I18nContext';
 import PickingOrders from './components/PickingOrders';
-
+import FleetPlugin from './components/plugins/FleetPlugin';
 const App: React.FC = () => {
     const { isAuthenticated, user, role, companyId, logout } = useAuth();
     const [currentView, setCurrentView] = useState<View>(View.Dashboard);
     const { t } = useI18n();
-    
+
     if (!isAuthenticated || !user || !companyId || !role) {
         return <Login />;
     }
-    
+
     const isAdmin = role === RoleEnum.Admin || role === RoleEnum.Owner;
 
     // Simple user object for props, adjust as needed
@@ -46,13 +46,15 @@ const App: React.FC = () => {
                 return <Inventory companyId={companyId} />;
             case View.PickingOrders:
                 return <PickingOrders companyId={companyId} />;
+            case View.Fleet:
+                return <FleetPlugin companyId={companyId} />;
             case View.Admin:
-                 if (isAdmin) {
+                if (isAdmin) {
                     return <Admin companyId={companyId} />;
-                 }
-                 return <Dashboard setCurrentView={setCurrentView} companyId={companyId} />;
+                }
+                return <Dashboard setCurrentView={setCurrentView} companyId={companyId} />;
             case View.Planning:
-                 return <div className="p-8"><h1 className="text-3xl font-bold text-slate-800">{t('navigation.planning')}</h1><p className="mt-4 text-slate-600">Tato funkce bude brzy k dispozici.</p></div>;
+                return <div className="p-8"><h1 className="text-3xl font-bold text-slate-800">{t('navigation.planning')}</h1><p className="mt-4 text-slate-600">Tato funkce bude brzy k dispozici.</p></div>;
             default:
                 return <Dashboard setCurrentView={setCurrentView} companyId={companyId} />;
         }

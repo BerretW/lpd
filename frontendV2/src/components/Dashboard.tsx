@@ -7,7 +7,7 @@ import { useAuth } from '../AuthContext';
 import { useI18n } from '../I18nContext';
 import WorkReport from './WorkReport';
 import ErrorModal from './common/ErrorModal';
-
+import { ExtensionPoint } from '../lib/PluginSystem';
 interface DashboardProps {
     setCurrentView: (view: View) => void;
     companyId: number;
@@ -112,6 +112,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentView, companyId }) => {
 
     const renderDashboard = () => (
         <>
+        <ExtensionPoint name="dashboard-top" context={{ companyId }} />
             <section className={`grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 ${isAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
                 <QuickLink view={View.Attendance} label={t('dashboard.logAttendance')} icon="fa-calendar-plus" color="bg-gray-700 hover:bg-gray-800" />
                 {isAdmin && <QuickLink view={View.Jobs} label={t('dashboard.manageJobs')} icon="fa-briefcase" color="bg-gray-800 hover:bg-gray-900" />}

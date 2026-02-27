@@ -16,6 +16,7 @@ export enum View {
     PickingOrders = 'PickingOrders',
     Admin = 'Admin',
     Planning = 'Planning',
+    Fleet = 'Fleet', // <--- PŘIDAT TOTO
 }
 
 export enum WorkTypeName {
@@ -484,4 +485,38 @@ export interface PohodaSettingsIn {
     mserver_user?: string;
     mserver_password?: string;
     ico_of_accounting_entity?: string;
+}
+
+
+// --- FLEET MANAGEMENT TYPES ---
+export interface VehicleOut {
+    id: number;
+    company_id: number;
+    license_plate: string;
+    brand: string;
+    model: string;
+    vin?: string;
+    current_km: number;
+    last_service_date?: string;
+    next_service_km?: number;
+    next_stk_date?: string;
+    assigned_user_id?: number;
+}
+
+export interface VehicleLogOut {
+    id: number;
+    vehicle_id: number;
+    driver_id: number;
+    travel_date: string;
+    start_location: string;
+    end_location: string;
+    start_km: number;
+    end_km: number;
+    notes?: string;
+}
+
+export interface VehicleAlertOut extends VehicleOut {
+    alert_type: 'STK_EXPIRED' | 'STK_WARNING' | 'SERVICE_OVERDUE' | 'SERVICE_WARNING';
+    days_remaining?: number;
+    km_overdue?: number;
 }
