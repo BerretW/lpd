@@ -14,3 +14,4 @@ greenlet>=3.0.0
 cryptography
 aiosmtplib
 httpx
+APScheduler==3.10.4

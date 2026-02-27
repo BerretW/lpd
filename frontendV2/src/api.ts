@@ -570,6 +570,25 @@ export const exportPeriodicInvoiceToPohoda = async (cid: number, clientId: numbe
     window.URL.revokeObjectURL(url);
 };
 
+// --- PLUGINS API ---
+export const getBackupConfig = (cid: number) => 
+    fetchApi(`/plugins/backup/config?company_id=${cid}`);
+
+export const updateBackupConfig = (cid: number, data: any) => 
+    fetchApi(`/plugins/backup/config?company_id=${cid}`, { method: 'POST', body: JSON.stringify(data) });
+
+export const runBackup = (cid: number) => 
+    fetchApi(`/plugins/backup/run?company_id=${cid}`, { method: 'POST' });
+
+export const getBackupFiles = (cid: number) => 
+    fetchApi(`/plugins/backup/files?company_id=${cid}`);
+
+export const restoreBackup = (cid: number, filename: string) => 
+    fetchApi(`/plugins/backup/restore/${filename}?company_id=${cid}`, { method: 'POST' });
+
+// U download URL musíme také přidat company_id, aby prošla autorizace
+export const getBackupDownloadUrl = (cid: number, filename: string) => 
+    `${API_BASE_URL}/plugins/backup/download/${filename}?company_id=${cid}`;
 
 // --- POHODA API ---
 export const getPohodaSettings = (cid: number): Promise<PohodaSettingsIn> => {

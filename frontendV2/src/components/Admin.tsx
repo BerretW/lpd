@@ -14,12 +14,13 @@ import ConfirmModal from './common/ConfirmModal';
 import InviteMemberForm from './InviteMemberForm';
 import SmtpSettingsForm from './SmtpSettingsForm';
 import TriggerManager from './TriggerManager';
+import BackupPlugin from './plugins/BackupPlugin';
 import PohodaSettingsForm from './PohodaSettingsForm'; // NOVÝ IMPORT
 
 type AdminView = 'clients' | 'members' | 'rates' | 'settings' | 'attendance' | 'smtp' | 'triggers' | 'pohoda';
 
 interface AdminProps {
-  companyId: number;
+    companyId: number;
 }
 
 const Admin: React.FC<AdminProps> = ({ companyId }) => {
@@ -27,15 +28,15 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    
+
     // State pro synchronizaci
     const [isSyncing, setIsSyncing] = useState(false);
-    
+
     const [clients, setClients] = useState<Client[]>([]);
     const [members, setMembers] = useState<Membership[]>([]);
     const [workTypes, setWorkTypes] = useState<WorkType[]>([]);
     const [company, setCompany] = useState<Company | null>(null);
-    
+
     const [editingItem, setEditingItem] = useState<Client | WorkType | null>(null);
     const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
 
@@ -70,11 +71,11 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
             await action;
             fetchData();
             closeModal();
-        } catch(error) {
+        } catch (error) {
             setError(error instanceof Error ? error.message : `Chyba při ukládání zákazníka`);
         }
     };
-    
+
     const executeDeleteClient = async () => {
         if (!clientToDelete) return;
         try {
@@ -89,10 +90,10 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
 
     const handleSaveWorkType = async (rateData: any) => {
         try {
-            const action = editingItem 
-                ? api.updateWorkType(companyId, editingItem.id, rateData) 
+            const action = editingItem
+                ? api.updateWorkType(companyId, editingItem.id, rateData)
                 : api.createWorkType(companyId, rateData);
-            
+
             await action;
             fetchData();
             closeModal();
@@ -100,7 +101,7 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
             setError(error instanceof Error ? error.message : `Chyba při ukládání sazby.`);
         }
     };
-    
+
     const handleSaveCompanySettings = async (companyData: Partial<Company>) => {
         try {
             const updatedCompany = await api.updateCompanyBillingInfo(companyId, companyData);
@@ -145,8 +146,9 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                 <button onClick={() => setView('smtp')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'smtp' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>SMTP</button>
                 <button onClick={() => setView('triggers')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'triggers' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Notifikace</button>
                 <button onClick={() => setView('pohoda')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'pohoda' ? 'bg-orange-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Pohoda</button>
+                <button onClick={() => setView('plugins')} className="...">Pluginy</button>
             </nav>
-            
+
             <Card>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-semibold text-slate-700">
@@ -159,7 +161,7 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                         {view === 'triggers' && 'Nastavení automatických notifikací'}
                         {view === 'pohoda' && 'Integrace Pohoda (mServer)'}
                     </h2>
-                     {view === 'clients' && (
+                    {view === 'clients' && (
                         <div className="flex gap-2">
                             <Button onClick={handlePohodaSync} disabled={isSyncing} className="bg-orange-600 hover:bg-orange-700">
                                 <Icon name={isSyncing ? "fa-spinner fa-spin" : "fa-sync"} className="mr-2" />
@@ -167,9 +169,9 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                             </Button>
                             <Button onClick={() => openModal()}><Icon name="fa-plus" className="mr-2" /> Přidat zákazníka</Button>
                         </div>
-                     )}
-                     {view === 'members' && <Button onClick={() => setIsInviteModalOpen(true)}><Icon name="fa-user-plus" className="mr-2" /> Pozvat zaměstnance</Button>}
-                     {view === 'rates' && <Button onClick={() => openModal()}><Icon name="fa-plus" className="mr-2" /> Přidat sazbu</Button>}
+                    )}
+                    {view === 'members' && <Button onClick={() => setIsInviteModalOpen(true)}><Icon name="fa-user-plus" className="mr-2" /> Pozvat zaměstnance</Button>}
+                    {view === 'rates' && <Button onClick={() => openModal()}><Icon name="fa-plus" className="mr-2" /> Přidat sazbu</Button>}
                 </div>
 
                 {view === 'clients' && (
@@ -209,7 +211,7 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                         ))}
                     </ul>
                 )}
-                 {view === 'rates' && (
+                {view === 'rates' && (
                     <ul className="divide-y divide-slate-200">
                         {workTypes.map(rate => (
                             <li key={rate.id} className="py-3 flex justify-between items-center">
@@ -233,6 +235,16 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                 {view === 'pohoda' && (
                     <PohodaSettingsForm companyId={companyId} />
                 )}
+{view === 'plugins' && (
+    <div>
+        <h2 className="text-xl font-bold mb-4">Nainstalované pluginy</h2>
+        <div className="mb-6">
+            <h3 className="font-semibold text-slate-700 mb-2 border-b pb-1">Zálohování Databáze</h3>
+            {/* PŘEDÁNÍ companyId */}
+            <BackupPlugin companyId={companyId} />
+        </div>
+    </div>
+)}
             </Card>
 
             {isModalOpen && (
@@ -256,7 +268,7 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
             {clientToDelete && (
                 <ConfirmModal
                     title="Smazat zákazníka"
-                    message={<>Opravdu chcete smazat zákazníka <strong>{clientToDelete.name}</strong>? <br/> Všechny jeho zakázky zůstanou, ale budou bez přiřazeného klienta.</>}
+                    message={<>Opravdu chcete smazat zákazníka <strong>{clientToDelete.name}</strong>? <br /> Všechny jeho zakázky zůstanou, ale budou bez přiřazeného klienta.</>}
                     onConfirm={executeDeleteClient}
                     onCancel={() => setClientToDelete(null)}
                 />
