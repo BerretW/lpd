@@ -5,6 +5,10 @@ import { AuthProvider } from './AuthContext';
 import { I18nProvider } from './I18nContext';
 import './utils/cookies';
 
+// === PŘIDAT IMPORT PLUGINŮ ===
+import './plugins'; 
+
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");

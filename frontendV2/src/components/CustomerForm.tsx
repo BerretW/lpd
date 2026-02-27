@@ -5,6 +5,8 @@ import Button from './common/Button';
 import Icon from './common/Icon';
 import * as api from '../api';
 import { useAuth } from '../AuthContext';
+// --- ZDE CHYBĚL TENTO IMPORT ---
+import { ExtensionPoint } from '../lib/PluginSystem'; 
 
 interface CustomerFormProps {
   onSave: (customerData: Partial<Omit<Client, 'id' | 'company_id'>>) => void;
@@ -249,6 +251,17 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onSave, onCancel, customer 
                 </div>
             )}
 
+                {/* === ZDE PŘIDÁME EXTENSION POINT === */}
+            {/* Zobrazíme ho pouze pokud editujeme existujícího zákazníka */}
+            {customer && (
+                <div className="pt-4 border-t border-slate-200">
+                    <ExtensionPoint 
+                        name="customer-form-bottom" 
+                        context={{ clientId: customer.id }} 
+                    />
+                </div>
+            )}
+            {/* =================================== */}
             <div className="flex justify-end pt-4 space-x-2">
                 <Button type="button" variant="secondary" onClick={onCancel}>Zrušit</Button>
                 <Button type="submit">Uložit zákazníka</Button>
