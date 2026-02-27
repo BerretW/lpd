@@ -20,6 +20,7 @@ from app.core.plugin_manager import PluginManager
 from plugins import db_backup
 from plugins import customer_stats  # Import pluginu pro zákaznické statistiky (příklad)
 from plugins import attendance_export  # Import pluginu pro export docházky (příklad)
+from plugins import inventory_import  # Import pluginu pro import skladu (příklad)  
 
 # Importy všech API routerů
 from app.routers import (
@@ -120,6 +121,7 @@ async def lifespan(app: FastAPI):
     pm.register_plugin(db_backup)
     pm.register_plugin(customer_stats)
     pm.register_plugin(attendance_export)
+    pm.register_plugin(inventory_import)  # Registrace pluginu pro import skladu (příklad)
 
     
     # Spuštění staré logiky triggerů na pozadí

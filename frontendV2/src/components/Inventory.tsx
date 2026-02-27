@@ -14,7 +14,7 @@ import Input from './common/Input';
 import LocationManager from './LocationManager';
 import EanTerminal from './EanTerminal';
 import InventoryHistoryModal from './InventoryHistoryModal'; // Už tam asi je, ale ujistěte se
-
+import { ExtensionPoint } from '../lib/PluginSystem';
 
 interface InventoryProps {
   companyId: number;
@@ -129,11 +129,15 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
             <Button onClick={() => setIsEanTerminalOpen(true)} variant="secondary" className="!bg-gray-800 !text-white">
               <i className="fas fa-barcode mr-2"></i> Skladový automat
             </Button>
+                {/* ZDE VLOŽIT EXTENSION POINT */}
+    <ExtensionPoint name="inventory-header-actions" context={{ companyId, refresh: () => fetchData(false) }} />
+    {/* ========================== */}
             {isAdmin && view === 'items' && (
                 <Button onClick={() => { setEditingItem(null); setIsFormModalOpen(true); }}>
                   <i className="fas fa-plus mr-2"></i> {t('inventory.newItem')}
                 </Button>
             )}
+            
         </div>
       </div>
 
