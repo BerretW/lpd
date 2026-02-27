@@ -9,7 +9,7 @@ services:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: database
       MYSQL_PASSWORD: userpassword
-    # ports: ["3306:3306"] # Odkomentuj, pokud se chceš připojit k DB z PC (DBeaver atd.)
+    ports: ["3306:3306"] # Odkomentuj, pokud se chceš připojit k DB z PC (DBeaver atd.)
     volumes:
       - db_data:/var/lib/mysql
 

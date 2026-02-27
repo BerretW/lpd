@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from enum import Enum
 from sqlalchemy import (
     String, Integer, ForeignKey, DateTime, Boolean,
@@ -191,7 +191,17 @@ class ItemLocationStock(Base):
     inventory_item: Mapped["InventoryItem"] = relationship(back_populates="locations")
     location: Mapped["Location"] = relationship()
 
-# ... (ostatní modely jako WorkOrder, Task atd. zůstávají beze změny) ...
+class CompanyPohodaSettings(Base):
+    __tablename__ = "company_pohoda_settings"
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    mserver_url: Mapped[Optional[str]] = mapped_column(String(255)) # Např. http://192.168.1.10:4444/xml
+    mserver_user: Mapped[Optional[str]] = mapped_column(String(100))
+    mserver_password: Mapped[Optional[str]] = mapped_column(String(255))
+    ico_of_accounting_entity: Mapped[str] = mapped_column(String(20)) # IČO firmy v Pohodě (nutné pro hlavičku XML)
+    company: Mapped["Company"] = relationship()
+
+
 class Invite(Base):
     __tablename__ = "invites"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -204,7 +214,6 @@ class Invite(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     __table_args__ = (UniqueConstraint("company_id", "email", name="uq_invite_company_email"),)
 
-# backend/app/db/models.py
 
 class Client(Base):
     __tablename__ = "clients"
@@ -221,8 +230,31 @@ class Client(Base):
     dic: Mapped[Optional[str]] = mapped_column(String(20), index=True)
     margin_percentage: Mapped[Optional[float]] = mapped_column(Float) 
     category_margins: Mapped[list["ClientCategoryMargin"]] = relationship(back_populates="client", cascade="all, delete-orphan")
+    pohoda_ext_id: Mapped[Optional[str]] = mapped_column(String(100), index=True) # Unikátní ID klienta v Pohodě
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_client_company_name"),)
 
+class Invoice(Base):
+    """Pevně uložená faktura, která se nemění, i když se změní ceník položek"""
+    __tablename__ = "invoices"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"))
+    work_order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("work_orders.id", ondelete="SET NULL"))
+    
+    invoice_number: Mapped[str] = mapped_column(String(50))
+    issue_date: Mapped[date] = mapped_column(Date)
+    due_date: Mapped[date] = mapped_column(Date)
+    
+    total_amount: Mapped[float] = mapped_column(Float)
+    items_json: Mapped[dict] = mapped_column(JSON) # Uložený přesný stav položek z BillingReportu
+    
+    exported_to_pohoda: Mapped[bool] = mapped_column(Boolean, default=False)
+    pohoda_document_id: Mapped[Optional[str]] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
+    
+    company: Mapped["Company"] = relationship()
+    client: Mapped["Client"] = relationship()
+    work_order: Mapped["WorkOrder"] = relationship()
     
 class InventoryAuditLog(Base):
     __tablename__ = "inventory_audit_logs"

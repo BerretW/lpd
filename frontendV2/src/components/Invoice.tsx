@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { VatSettings, WorkOrderOut, Company, BillingReportOut, BillingReportItem } from '../types';
 import Icon from './common/Icon';
-import Button from './common/Button';
+import * as api from '../api';
 
 interface InvoiceProps {
     workOrder: WorkOrderOut;
@@ -23,25 +23,19 @@ interface EditableTimeLog {
 
 const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, vatSettings, onClose, onMarkAsBilled }) => {
     
-    // Lokální stav pro editovatelné položky
     const [editableLabor, setEditableLabor] = useState<EditableTimeLog[]>([]);
     const [editableMaterial, setEditableMaterial] = useState<BillingReportItem[]>([]);
-    
-    // NOVÉ: Stav pro globální úpravu v %
-    const [globalModifier, setGlobalModifier] = useState<number>(0);
+    const[globalModifier, setGlobalModifier] = useState<number>(0);
+    const [isExporting, setIsExporting] = useState(false);
 
-    // Inicializace stavu
     useEffect(() => {
         if (billingReport) {
             setEditableLabor(billingReport.time_logs || []);
             setEditableMaterial(billingReport.used_items || []);
         }
-    }, [billingReport]);
+    },[billingReport]);
 
-    // Přepočet všech součtů
     const { 
-        laborSubtotal, 
-        materialSubtotal, 
         rawTotal, 
         adjustmentAmount, 
         laborTotalAdjusted,
@@ -50,27 +44,17 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
         materialVat, 
         grandTotal 
     } = useMemo(() => {
-        // 1. Hrubé součty z řádků
         const lTotal = editableLabor.reduce((sum, item) => sum + (item.total_price || 0), 0);
         const mTotal = editableMaterial.reduce((sum, item) => sum + (item.total_price || 0), 0);
         const rawSum = lTotal + mTotal;
-
-        // 2. Výpočet úpravy (slevy/přirážky)
-        // Multiplikátor: např. pro slevu -10% to bude 0.9, pro přirážku +10% to bude 1.1
         const multiplier = 1 + (globalModifier / 100);
         
-        // 3. Aplikace úpravy na základy daně (aby sedělo DPH)
         const lTotalAdj = lTotal * multiplier;
         const mTotalAdj = mTotal * multiplier;
-        
-        // Hodnota úpravy v korunách (pro zobrazení na faktuře)
         const adjAmount = rawSum * (globalModifier / 100);
 
-        // 4. Výpočet DPH z UPRAVENÝCH základů
         const lVat = lTotalAdj * (vatSettings.laborRate / 100);
         const mVat = mTotalAdj * (vatSettings.materialRate / 100);
-        
-        // 5. Celkový součet
         const gTotal = lTotalAdj + mTotalAdj + lVat + mVat;
 
         return {
@@ -84,13 +68,12 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
             materialVat: mVat,
             grandTotal: gTotal
         };
-    }, [editableLabor, editableMaterial, vatSettings, globalModifier]);
+    },[editableLabor, editableMaterial, vatSettings, globalModifier]);
 
-    // Handlery pro změny řádků (beze změn)
     const handleMaterialChange = (index: number, field: 'unit_price_sold' | 'total_price', value: string) => {
         const numValue = parseFloat(value);
         if (isNaN(numValue)) return;
-        const newItems = [...editableMaterial];
+        const newItems =[...editableMaterial];
         const item = newItems[index];
         if (field === 'unit_price_sold') {
             item.unit_price_sold = numValue;
@@ -117,6 +100,17 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
         setEditableLabor(newLogs);
     };
 
+    const handleExportPohoda = async () => {
+        setIsExporting(true);
+        try {
+            await api.exportWorkOrderToPohoda(workOrder.company_id, workOrder.id);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "Chyba při exportu do Pohody.");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const handlePrint = () => {
         const printContent = document.getElementById('invoice-print-area');
         if (printContent) {
@@ -135,12 +129,6 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                 </style>
             `);
             printWindow?.document.write('</head><body>');
-            // Pro přenos hodnot z inputů do HTML pro tisk
-            const container = document.createElement('div');
-            container.innerHTML = printContent.innerHTML;
-            // Ručně přeneseme hodnoty, pokud by se nepřenesly (u React inputů to bývá nutné)
-            // Ale zde používáme span .print-only pro hodnoty, takže to bude fungovat OK.
-            
             printWindow?.document.write(printContent.innerHTML);
             printWindow?.document.write('</body></html>');
             printWindow?.document.close();
@@ -156,12 +144,9 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
 
         return (
              <div id="invoice-print-area" className="p-8 bg-white shadow-lg mx-auto text-slate-900" style={{width: '210mm', minHeight: '297mm'}}>
-                
-                {/* Hlavička */}
                 <div className="flex justify-between items-start mb-8">
                     <div>
                         <h1 className="text-4xl font-bold text-slate-800">Faktura</h1>
-                        {/* Zobrazení pro "debil" přirážku nebo slevu jen pokud je aktivní */}
                         {globalModifier !== 0 && (
                             <p className="text-sm mt-1 font-semibold text-slate-500">
                                 {globalModifier > 0 ? 'Obsahuje expresní příplatek' : 'Obsahuje zákaznickou slevu'}
@@ -169,7 +154,7 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                         )}
                     </div>
                     <div className="text-right text-sm">
-                        <p className="font-bold">Variabilní symbol: {workOrder.id}2024</p>
+                        <p className="font-bold">Variabilní symbol: {workOrder.id}{new Date().getFullYear()}</p>
                         <p>Datum vystavení: {new Date().toLocaleDateString('cs-CZ')}</p>
                     </div>
                 </div>
@@ -194,7 +179,6 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
 
                 <h2 className="text-xl font-bold border-b-2 border-slate-800 pb-2 mb-4">Položky faktury</h2>
                 
-                {/* Práce */}
                 <h3 className="text-sm font-bold uppercase text-slate-500 mt-6 mb-2">Práce</h3>
                 <table className="w-full text-left text-sm mb-4">
                         <thead className="border-b-2 border-slate-200">
@@ -225,7 +209,6 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                     </tbody>
                 </table>
 
-                {/* Materiál */}
                 <h3 className="text-sm font-bold uppercase text-slate-500 mt-6 mb-2">Materiál</h3>
                 <table className="w-full text-left text-sm">
                     <thead className="border-b-2 border-slate-200">
@@ -256,10 +239,7 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                     </tbody>
                 </table>
 
-                {/* Sekce Součty */}
                 <div className="mt-8 flex flex-col items-end">
-                    
-                    {/* NOVÉ: Ovládání globální úpravy (jen na obrazovce) */}
                     <div className="no-print bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-4 w-1/2">
                         <label className="block text-sm font-bold text-yellow-800 mb-1">
                             Globální úprava ceny (Sleva / Přirážka)
@@ -274,7 +254,7 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                             />
                             <span className="text-yellow-800 font-bold">%</span>
                             <span className="text-xs text-yellow-700 ml-2">
-                                (Záporné číslo = Sleva, Kladné = Přirážka)
+                                (- Sleva / + Přirážka)
                             </span>
                         </div>
                     </div>
@@ -282,7 +262,6 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                     <div className="w-1/2 bg-slate-50 p-4 rounded-lg">
                         <table className="w-full text-sm">
                             <tbody>
-                                {/* Mezisoučet (jen pokud je aktivní úprava) */}
                                 {globalModifier !== 0 && (
                                     <>
                                         <tr>
@@ -300,7 +279,6 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                                         <tr><td colSpan={2} className="py-2"></td></tr>
                                     </>
                                 )}
-
                                 <tr>
                                     <td className="py-1 text-slate-500">Základ daně (práce {vatSettings.laborRate}%):</td>
                                     <td className="text-right">{laborTotalAdjusted.toLocaleString('cs-CZ', { style: 'currency', currency: 'CZK' })}</td>
@@ -327,7 +305,7 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                 </div>
                 
                 <div className="mt-12 pt-8 border-t border-slate-200 text-center text-xs text-slate-400">
-                    <p>Faktura vygenerována systémem ProfiTechnik OS</p>
+                    <p>Faktura vygenerována systémem LPD Worker OS</p>
                 </div>
             </div>
         );
@@ -344,6 +322,16 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                         </span>
                     </div>
                     <div>
+                        {/* NOVÉ TLAČÍTKO PRO EXPORT DO POHODY */}
+                        <button 
+                            onClick={handleExportPohoda} 
+                            disabled={isExporting || !billingReport}
+                            className="mr-4 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-md transition-colors text-white font-semibold"
+                        >
+                            <Icon name={isExporting ? "fa-spinner fa-spin" : "fa-file-code"} className="mr-2"/> 
+                            {isExporting ? "Exportuji..." : "Export Pohoda (XML)"}
+                        </button>
+
                          {onMarkAsBilled && (
                             <button onClick={onMarkAsBilled} className="mr-4 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 rounded-md transition-colors">
                                 <Icon name="fa-check-circle" className="mr-2"/> Označit jako fakturované

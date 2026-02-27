@@ -477,3 +477,11 @@ export interface BillingReportOut {
     // Změna z any[] na konkrétní typ
     used_items: BillingReportItem[]; 
 }
+
+export interface PohodaSettingsIn {
+    is_enabled: boolean;
+    mserver_url?: string;
+    mserver_user?: string;
+    mserver_password?: string;
+    ico_of_accounting_entity?: string;
+}

@@ -3,6 +3,7 @@ import { Client, Company, ClientBillingReportOut, VatSettings } from '../types';
 import Modal from './common/Modal';
 import Button from './common/Button';
 import Input from './common/Input';
+import Icon from './common/Icon';
 import * as api from '../api';
 import { useAuth } from '../AuthContext';
 import ErrorMessage from './common/ErrorMessage';
@@ -17,11 +18,12 @@ const PeriodicInvoiceModal: React.FC<PeriodicInvoiceModalProps> = ({ onClose }) 
     const { companyId } = useAuth();
     const [clients, setClients] = useState<Client[]>([]);
     const [selectedClientId, setSelectedClientId] = useState<string>('');
-    const [startDate, setStartDate] = useState('');
+    const[startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [billingReport, setBillingReport] = useState<ClientBillingReportOut | null>(null);
-    const [company, setCompany] = useState<Company | null>(null);
+    const[billingReport, setBillingReport] = useState<ClientBillingReportOut | null>(null);
+    const[company, setCompany] = useState<Company | null>(null);
     const [loading, setLoading] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     
     // Hardcoded for now, a real app would fetch this.
@@ -65,6 +67,18 @@ const PeriodicInvoiceModal: React.FC<PeriodicInvoiceModalProps> = ({ onClose }) 
         }
     };
 
+    const handleExportPohoda = async () => {
+        if (!selectedClientId) return;
+        setIsExporting(true);
+        try {
+            await api.exportPeriodicInvoiceToPohoda(companyId, parseInt(selectedClientId), startDate, endDate);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "Chyba při exportu do Pohody.");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const handlePrint = () => {
         const printContent = document.getElementById('periodic-invoice-print-area');
         if (printContent) {
@@ -88,7 +102,7 @@ const PeriodicInvoiceModal: React.FC<PeriodicInvoiceModalProps> = ({ onClose }) 
         const materialVatCalc = materialTotal * (vatSettings.materialRate / 100);
         const grandTotalCalc = laborTotal + materialTotal + laborVatCalc + materialVatCalc;
         return { laborTotal, materialTotal, laborVat: laborVatCalc, materialVat: materialVatCalc, grandTotal: grandTotalCalc };
-    }, [billingReport, vatSettings]);
+    },[billingReport, vatSettings]);
 
     const selectedClient = clients.find(c => c.id === parseInt(selectedClientId));
 
@@ -148,37 +162,124 @@ const PeriodicInvoiceModal: React.FC<PeriodicInvoiceModalProps> = ({ onClose }) 
             ) : (
                 <div>
                     <div className="flex justify-between items-center mb-4">
-                        <Button variant="secondary" onClick={() => setBillingReport(null)}>Zpět</Button>
-                        <Button onClick={handlePrint}>Tisk</Button>
+                        <Button variant="secondary" onClick={() => setBillingReport(null)}>
+                            <Icon name="fa-arrow-left" className="mr-2"/> Zpět
+                        </Button>
+                        <div>
+                            {/* NOVÉ TLAČÍTKO PRO EXPORT DO POHODY */}
+                            <button 
+                                onClick={handleExportPohoda} 
+                                disabled={isExporting}
+                                className="mr-4 px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-md transition-colors text-white font-semibold"
+                            >
+                                <Icon name={isExporting ? "fa-spinner fa-spin" : "fa-file-code"} className="mr-2"/> 
+                                {isExporting ? "Exportuji..." : "Export Pohoda (XML)"}
+                            </button>
+
+                            <Button onClick={handlePrint}>
+                                <Icon name="fa-print" className="mr-2"/> Tisk
+                            </Button>
+                        </div>
                     </div>
                     <div id="periodic-invoice-print-area" className="p-8 bg-white shadow-lg mx-auto text-slate-900" style={{width: '210mm'}}>
                         <h1 className="text-3xl font-bold mb-6">Faktura</h1>
                         <div className="grid grid-cols-2 gap-8 mb-8">
                             <div>
-                                <h3 className="font-bold">Dodavatel:</h3>
-                                <p>{company?.legal_name || company?.name}</p><p>{company?.address}</p><p>IČO: {company?.ico}</p><p>DIČ: {company?.dic}</p>
+                                <h3 className="font-bold text-gray-500 uppercase text-xs mb-2">Dodavatel:</h3>
+                                <p className="font-semibold text-lg">{company?.legal_name || company?.name}</p>
+                                <p>{company?.address}</p>
+                                <p className="mt-2">IČO: {company?.ico}</p>
+                                <p>DIČ: {company?.dic}</p>
                             </div>
                             <div>
-                                <h3 className="font-bold">Odběratel:</h3>
-                                <p>{selectedClient?.legal_name || selectedClient?.name}</p><p>{selectedClient?.address}</p>{selectedClient?.ico && <p>IČO: {selectedClient.ico}</p>}{selectedClient?.dic && <p>DIČ: {selectedClient.dic}</p>}
+                                <h3 className="font-bold text-gray-500 uppercase text-xs mb-2">Odběratel:</h3>
+                                <p className="font-semibold text-lg">{selectedClient?.legal_name || selectedClient?.name}</p>
+                                <p>{selectedClient?.address}</p>
+                                {selectedClient?.ico && <p className="mt-2">IČO: {selectedClient.ico}</p>}
+                                {selectedClient?.dic && <p>DIČ: {selectedClient.dic}</p>}
                             </div>
                         </div>
                          <div className="mb-4">
                             <p><strong>Datum vystavení:</strong> {new Date().toLocaleDateString('cs-CZ')}</p>
                             <p><strong>Zdanitelné plnění za období:</strong> {new Date(startDate).toLocaleDateString('cs-CZ')} - {new Date(endDate).toLocaleDateString('cs-CZ')}</p>
                         </div>
-                        <h2 className="text-xl font-bold border-b pb-2 mb-4">Položky</h2>
-                        <h3 className="text-lg font-semibold mt-6 mb-2">Práce</h3>
-                        <table className="w-full text-left text-sm">
-                            <thead><tr className="bg-slate-200 text-slate-700"><th className="p-2">Druh práce</th><th className="p-2">Počet hodin</th><th className="p-2">Sazba/hod</th><th className="p-2 text-right">Cena celkem</th></tr></thead>
-                            <tbody>{billingReport.time_logs.map((item, i) => (<tr key={`l-${i}`} className="border-b"><td className="p-2">{item.work_type_name} ({item.task_name})</td><td className="p-2">{item.hours.toFixed(2)} hod</td><td className="p-2">{item.rate.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td><td className="p-2 text-right">{item.total_price.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td></tr>))}</tbody>
+                        <h2 className="text-xl font-bold border-b pb-2 mb-4 mt-6">Položky faktury</h2>
+                        
+                        <h3 className="text-sm font-bold uppercase text-slate-500 mt-4 mb-2">Práce</h3>
+                        <table className="w-full text-left text-sm mb-4">
+                            <thead className="border-b-2 border-slate-200">
+                                <tr className="text-slate-500">
+                                    <th className="py-2">Druh práce</th>
+                                    <th className="py-2 text-right">Počet hodin</th>
+                                    <th className="py-2 text-right">Sazba/hod</th>
+                                    <th className="py-2 text-right">Cena celkem</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {billingReport.time_logs.map((item, i) => (
+                                    <tr key={`l-${i}`} className="border-b border-slate-100">
+                                        <td className="py-2">{item.work_type_name} ({item.task_name})</td>
+                                        <td className="py-2 text-right">{item.hours.toFixed(2)} hod</td>
+                                        <td className="py-2 text-right">{item.rate.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                        <td className="py-2 text-right font-medium">{item.total_price.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
                         </table>
-                        <h3 className="text-lg font-semibold mt-6 mb-2">Materiál</h3>
+                        
+                        <h3 className="text-sm font-bold uppercase text-slate-500 mt-6 mb-2">Materiál</h3>
                         <table className="w-full text-left text-sm">
-                            <thead><tr className="bg-slate-200 text-slate-700"><th className="p-2">Název</th><th className="p-2">Množství</th><th className="p-2">Cena/ks</th><th className="p-2 text-right">Cena celkem</th></tr></thead>
-                            <tbody>{billingReport.used_items.map((item, i) => (<tr key={`m-${i}`} className="border-b"><td className="p-2">{item.item_name} ({item.task_name})</td><td className="p-2">{item.quantity} ks</td><td className="p-2">{item.price.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td><td className="p-2 text-right">{item.total_price.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td></tr>))}</tbody>
+                            <thead className="border-b-2 border-slate-200">
+                                <tr className="text-slate-500">
+                                    <th className="py-2">Název</th>
+                                    <th className="py-2 text-right">Množství</th>
+                                    <th className="py-2 text-right">Cena/ks</th>
+                                    <th className="py-2 text-right">Cena celkem</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {billingReport.used_items.map((item, i) => (
+                                    <tr key={`m-${i}`} className="border-b border-slate-100">
+                                        <td className="py-2">{item.item_name} ({item.task_name})</td>
+                                        <td className="py-2 text-right">{item.quantity} ks</td>
+                                        <td className="py-2 text-right">{item.unit_price_sold.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                        <td className="py-2 text-right font-medium">{item.total_price.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
                         </table>
-                        <div className="mt-8 pt-4 border-t-2 flex justify-end"><table className="w-1/2 text-sm"><tbody><tr><td className="py-1 pr-4">Základ daně (práce {vatSettings.laborRate}%):</td><td className="text-right font-semibold">{laborTotal.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td></tr><tr><td className="py-1 pr-4">DPH ({vatSettings.laborRate}%):</td><td className="text-right font-semibold">{laborVat.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td></tr><tr><td className="py-1 pr-4">Základ daně (materiál {vatSettings.materialRate}%):</td><td className="text-right font-semibold">{materialTotal.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td></tr><tr><td className="py-1 pr-4">DPH ({vatSettings.materialRate}%):</td><td className="text-right font-semibold">{materialVat.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td></tr><tr className="border-t-2 mt-2 pt-2"><td className="py-1 pr-4 font-bold text-lg">Celkem k úhradě:</td><td className="text-right font-bold text-lg">{grandTotal.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td></tr></tbody></table></div>
+
+                        <div className="mt-8 pt-4 border-t-2 flex justify-end">
+                            <div className="w-1/2 bg-slate-50 p-4 rounded-lg">
+                                <table className="w-full text-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td className="py-1 text-slate-500">Základ daně (práce {vatSettings.laborRate}%):</td>
+                                            <td className="text-right">{laborTotal.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="py-1 text-slate-500">DPH ({vatSettings.laborRate}%):</td>
+                                            <td className="text-right">{laborVat.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="py-1 text-slate-500">Základ daně (materiál {vatSettings.materialRate}%):</td>
+                                            <td className="text-right">{materialTotal.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="py-1 text-slate-500 pb-4 border-b border-slate-200">DPH ({vatSettings.materialRate}%):</td>
+                                            <td className="text-right pb-4 border-b border-slate-200">{materialVat.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                        </tr>
+                                        <tr className="text-lg font-bold">
+                                            <td className="py-4">Celkem k úhradě:</td>
+                                            <td className="text-right py-4 text-slate-900">{grandTotal.toLocaleString('cs-CZ',{style:'currency',currency:'CZK'})}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div className="mt-12 pt-8 border-t border-slate-200 text-center text-xs text-slate-400">
+                            <p>Faktura vygenerována systémem LPD Worker OS</p>
+                        </div>
                     </div>
                 </div>
             )}

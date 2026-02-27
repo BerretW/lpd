@@ -13,3 +13,4 @@ alembic==1.11.1
 greenlet>=3.0.0
 cryptography
 aiosmtplib
+httpx

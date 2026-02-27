@@ -16,7 +16,7 @@ from app.routers import (
     auth, users, companies, clients, invites, members, inventory, categories,
     work_types, work_orders, tasks, time_logs, audit_logs,
     locations, inventory_movements, smtp, triggers, internal, picking_orders,
-    partners 
+    partners , pohoda
 )
 from app.services.trigger_service import check_all_triggers
 
@@ -129,7 +129,8 @@ app.include_router(smtp.router)
 app.include_router(triggers.router)
 app.include_router(internal.router)
 app.include_router(picking_orders.router)
-app.include_router(partners.router) # <--- PŘIDAT REGISTRACI
+app.include_router(partners.router)
+app.include_router(pohoda.router)
 
 @app.get("/healthz")
 async def health():

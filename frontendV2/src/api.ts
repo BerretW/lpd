@@ -5,7 +5,8 @@ import {
     TaskOut, WorkOrderOut, TimeLogOut, MemberOut, ClientOut, InventoryItemOut, WorkTypeOut, 
     AuditLogOut, TimeLogStatus, CompanyOut, TimeLogEntryType, BillingReportOut, 
     ServiceReportDataOut, ClientBillingReportOut, CategoryOut, LocationOut, 
-    SmtpSettingsOut, TriggerOut, PickingOrderOut, PickingOrderStatus, PickingOrderCreateIn 
+    SmtpSettingsOut, TriggerOut, PickingOrderOut, PickingOrderStatus, PickingOrderCreateIn,
+    PohodaSettingsIn
 } from './types';
 import { ManufacturerOut, SupplierOut } from './types';
 import { ClientCategoryMargin } from './types';
@@ -506,4 +507,92 @@ export const getInventoryHistory = (cid: number, itemId: number): Promise<AuditL
         ] as AuditLogOut[]);
     }
     return fetchApi(`/companies/${cid}/inventory/${itemId}/history`);
+};
+
+export const exportInvoiceXml = async (cid: number, invId: number) => {
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    const response = await fetch(`${API_BASE_URL}/companies/${cid}/pohoda/export/invoice/${invId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error("Chyba exportu");
+    
+    // Spuštění stahování souboru
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pohoda_faktura_${invId}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+};
+
+// --- EXPORT DO POHODY ---
+export const exportWorkOrderToPohoda = async (cid: number, workOrderId: number) => {
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    const response = await fetch(`${API_BASE_URL}/companies/${cid}/pohoda/export/invoice/${workOrderId}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
+    
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Export do Pohody selhal.");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pohoda_faktura_zakazka_${workOrderId}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+};
+
+export const exportPeriodicInvoiceToPohoda = async (cid: number, clientId: number, startDate: string, endDate: string) => {
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    const response = await fetch(`${API_BASE_URL}/companies/${cid}/pohoda/export/periodic-invoice/${clientId}?start_date=${startDate}&end_date=${endDate}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
+    
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Export periodické faktury do Pohody selhal.");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pohoda_faktura_klient_${clientId}_${startDate}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+};
+
+
+// --- POHODA API ---
+export const getPohodaSettings = (cid: number): Promise<PohodaSettingsIn> => {
+    if (USE_MOCKS) return Promise.resolve({ is_enabled: false });
+    return fetchApi(`/companies/${cid}/pohoda/settings`);
+};
+
+export const updatePohodaSettings = (cid: number, data: PohodaSettingsIn): Promise<PohodaSettingsIn> => {
+    if (USE_MOCKS) return Promise.resolve(data);
+    return fetchApi(`/companies/${cid}/pohoda/settings`, { method: 'PUT', body: JSON.stringify(data) });
+};
+
+// Funkce pro synchronizaci (slouží i jako test spojení)
+export const syncClientsFromPohoda = async (cid: number) => {
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    const response = await fetch(`${API_BASE_URL}/companies/${cid}/pohoda/import/clients`, {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
+    
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Synchronizace s Pohodou selhala.");
+    }
+    return await response.json();
 };

@@ -14,8 +14,9 @@ import ConfirmModal from './common/ConfirmModal';
 import InviteMemberForm from './InviteMemberForm';
 import SmtpSettingsForm from './SmtpSettingsForm';
 import TriggerManager from './TriggerManager';
+import PohodaSettingsForm from './PohodaSettingsForm'; // NOVÝ IMPORT
 
-type AdminView = 'clients' | 'members' | 'rates' | 'settings' | 'attendance' | 'smtp' | 'triggers';
+type AdminView = 'clients' | 'members' | 'rates' | 'settings' | 'attendance' | 'smtp' | 'triggers' | 'pohoda';
 
 interface AdminProps {
   companyId: number;
@@ -26,6 +27,9 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    
+    // State pro synchronizaci
+    const [isSyncing, setIsSyncing] = useState(false);
     
     const [clients, setClients] = useState<Client[]>([]);
     const [members, setMembers] = useState<Membership[]>([]);
@@ -85,7 +89,6 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
 
     const handleSaveWorkType = async (rateData: any) => {
         try {
-            // FIX: Nyní voláme api.updateWorkType pokud editujeme
             const action = editingItem 
                 ? api.updateWorkType(companyId, editingItem.id, rateData) 
                 : api.createWorkType(companyId, rateData);
@@ -116,18 +119,32 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
         }
     };
 
+    const handlePohodaSync = async () => {
+        setIsSyncing(true);
+        try {
+            const res = await api.syncClientsFromPohoda(companyId);
+            alert(res.message);
+            fetchData(); // Refresh clients list
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Chyba synchronizace");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     return (
         <div className="p-8">
             <h1 className="text-3xl font-bold text-slate-800 mb-6">Správa systému</h1>
 
-            <nav className="mb-6 grid grid-cols-2 md:grid-cols-7 gap-1 bg-slate-200 p-1 rounded-lg">
-                <button onClick={() => setView('clients')} className={`w-full p-2 rounded-md font-semibold transition-colors ${view === 'clients' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Zákazníci</button>
-                <button onClick={() => setView('members')} className={`w-full p-2 rounded-md font-semibold transition-colors ${view === 'members' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Zaměstnanci</button>
-                <button onClick={() => setView('rates')} className={`w-full p-2 rounded-md font-semibold transition-colors ${view === 'rates' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Sazby práce</button>
-                <button onClick={() => setView('attendance')} className={`w-full p-2 rounded-md font-semibold transition-colors ${view === 'attendance' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Docházka</button>
-                <button onClick={() => setView('settings')} className={`w-full p-2 rounded-md font-semibold transition-colors ${view === 'settings' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Nastavení</button>
-                <button onClick={() => setView('smtp')} className={`w-full p-2 rounded-md font-semibold transition-colors ${view === 'smtp' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>SMTP</button>
-                <button onClick={() => setView('triggers')} className={`w-full p-2 rounded-md font-semibold transition-colors ${view === 'triggers' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Notifikace</button>
+            <nav className="mb-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-1 bg-slate-200 p-1 rounded-lg">
+                <button onClick={() => setView('clients')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'clients' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Zákazníci</button>
+                <button onClick={() => setView('members')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'members' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Zaměstnanci</button>
+                <button onClick={() => setView('rates')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'rates' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Sazby</button>
+                <button onClick={() => setView('attendance')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'attendance' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Docházka</button>
+                <button onClick={() => setView('settings')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'settings' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Firma</button>
+                <button onClick={() => setView('smtp')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'smtp' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>SMTP</button>
+                <button onClick={() => setView('triggers')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'triggers' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Notifikace</button>
+                <button onClick={() => setView('pohoda')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'pohoda' ? 'bg-orange-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Pohoda</button>
             </nav>
             
             <Card>
@@ -140,8 +157,17 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                         {view === 'settings' && 'Fakturační údaje firmy'}
                         {view === 'smtp' && 'Nastavení odchozí pošty (SMTP)'}
                         {view === 'triggers' && 'Nastavení automatických notifikací'}
+                        {view === 'pohoda' && 'Integrace Pohoda (mServer)'}
                     </h2>
-                     {view === 'clients' && <Button onClick={() => openModal()}><Icon name="fa-plus" className="mr-2" /> Přidat zákazníka</Button>}
+                     {view === 'clients' && (
+                        <div className="flex gap-2">
+                            <Button onClick={handlePohodaSync} disabled={isSyncing} className="bg-orange-600 hover:bg-orange-700">
+                                <Icon name={isSyncing ? "fa-spinner fa-spin" : "fa-sync"} className="mr-2" />
+                                {isSyncing ? "Sync..." : "Načíst z Pohody"}
+                            </Button>
+                            <Button onClick={() => openModal()}><Icon name="fa-plus" className="mr-2" /> Přidat zákazníka</Button>
+                        </div>
+                     )}
                      {view === 'members' && <Button onClick={() => setIsInviteModalOpen(true)}><Icon name="fa-user-plus" className="mr-2" /> Pozvat zaměstnance</Button>}
                      {view === 'rates' && <Button onClick={() => openModal()}><Icon name="fa-plus" className="mr-2" /> Přidat sazbu</Button>}
                 </div>
@@ -153,7 +179,6 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                                 <div>
                                     <p className="font-semibold text-black">{c.name}</p>
                                     <p className="text-sm text-slate-500">{c.address}</p>
-                                    {/* PŘIDÁNO: Zobrazení marže */}
                                     {c.margin_percentage !== undefined && c.margin_percentage !== 0 && (
                                         <p className="text-xs text-blue-600 font-medium">
                                             Marže: {c.margin_percentage > 0 ? '+' : ''}{c.margin_percentage}%
@@ -204,6 +229,9 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                 )}
                 {view === 'triggers' && (
                     <TriggerManager companyId={companyId} />
+                )}
+                {view === 'pohoda' && (
+                    <PohodaSettingsForm companyId={companyId} />
                 )}
             </Card>
 
