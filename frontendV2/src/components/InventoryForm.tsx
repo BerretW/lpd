@@ -30,36 +30,157 @@ const SimpleAddModal: React.FC<{ title: string; onClose: () => void; onSave: (va
     );
 };
 
-const CategoryCheckbox: React.FC<{
-    category: CategoryOut;
-    level: number;
+const hasSelectedDescendant = (cat: CategoryOut, selectedIds: number[]): boolean => {
+    if (selectedIds.includes(cat.id)) return true;
+    return cat.children?.some(c => hasSelectedDescendant(c, selectedIds)) ?? false;
+};
+
+const getInitialCollapsed = (cats: CategoryOut[], selectedIds: number[]): Set<number> => {
+    const collapsed = new Set<number>();
+    const traverse = (list: CategoryOut[]) => {
+        list.forEach(cat => {
+            if (cat.children && cat.children.length > 0) {
+                if (!hasSelectedDescendant(cat, selectedIds)) collapsed.add(cat.id);
+                traverse(cat.children);
+            }
+        });
+    };
+    traverse(cats);
+    return collapsed;
+};
+
+const CategoryTree: React.FC<{
+    categories: CategoryOut[];
     selectedIds: number[];
-    onToggle: (id: number) => void
-}> = ({ category, level, selectedIds, onToggle }) => (
-    <div key={category.id}>
-        <div className="flex items-center py-1" style={{ paddingLeft: `${level * 20}px` }}>
-            <input
-                type="checkbox"
-                id={`cat-${category.id}`}
-                checked={selectedIds.includes(category.id)}
-                onChange={() => onToggle(category.id)}
-                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
-            />
-            <label htmlFor={`cat-${category.id}`} className="ml-2 text-sm text-slate-700 cursor-pointer">
-                {category.name}
-            </label>
+    onToggle: (id: number) => void;
+}> = ({ categories, selectedIds, onToggle }) => {
+    const [search, setSearch] = useState('');
+    const [collapsed, setCollapsed] = useState<Set<number>>(() => getInitialCollapsed(categories, selectedIds));
+    const [expandedForIds, setExpandedForIds] = useState<string>('');
+    const firstSelectedRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Pokud přijdou selectedIds pozdě (async load), přepočítáme collapsed stav
+    useEffect(() => {
+        const key = selectedIds.slice().sort().join(',');
+        if (key && key !== expandedForIds) {
+            setExpandedForIds(key);
+            setCollapsed(getInitialCollapsed(categories, selectedIds));
+        }
+    }, [selectedIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (firstSelectedRef.current && containerRef.current) {
+            const container = containerRef.current;
+            const el = firstSelectedRef.current;
+            const containerRect = container.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            container.scrollTop += elRect.top - containerRect.top - 8;
+        }
+    }, [expandedForIds]);
+
+    const toggleCollapse = (id: number) => {
+        setCollapsed(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+
+    const searchLower = search.toLowerCase();
+    const matchesSearch = (cat: CategoryOut): boolean => {
+        if (cat.name.toLowerCase().includes(searchLower)) return true;
+        return cat.children?.some(matchesSearch) ?? false;
+    };
+
+    let firstSelectedAttached = false;
+
+    const renderCategory = (category: CategoryOut, level: number): React.ReactNode => {
+        if (search && !matchesSearch(category)) return null;
+
+        const isSelected = selectedIds.includes(category.id);
+        const hasChildren = !!(category.children && category.children.length > 0);
+        const isExpanded = search ? true : !collapsed.has(category.id);
+
+        let ref: React.Ref<HTMLDivElement> | undefined;
+        if (isSelected && !firstSelectedAttached) {
+            ref = firstSelectedRef;
+            firstSelectedAttached = true;
+        }
+
+        return (
+            <div key={category.id} ref={ref}>
+                <div
+                    className="flex items-center py-1 px-1 hover:bg-slate-50 rounded"
+                    style={{ paddingLeft: `${8 + level * 16}px` }}
+                >
+                    <button
+                        type="button"
+                        onClick={() => hasChildren && toggleCollapse(category.id)}
+                        className={`w-4 h-4 flex items-center justify-center mr-1 flex-shrink-0 ${hasChildren ? 'text-slate-400 hover:text-slate-600' : 'cursor-default'}`}
+                        tabIndex={-1}
+                    >
+                        {hasChildren && (
+                            <i className={`fas fa-chevron-${isExpanded ? 'down' : 'right'} text-xs`} />
+                        )}
+                    </button>
+                    <input
+                        type="checkbox"
+                        id={`cat-${category.id}`}
+                        checked={isSelected}
+                        onChange={() => onToggle(category.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 flex-shrink-0"
+                    />
+                    <label
+                        htmlFor={`cat-${category.id}`}
+                        className={`ml-2 text-sm cursor-pointer select-none ${isSelected ? 'text-red-700 font-medium' : 'text-slate-700'}`}
+                    >
+                        {category.name}
+                    </label>
+                </div>
+                {isExpanded && hasChildren && category.children!.map(child => renderCategory(child, level + 1))}
+            </div>
+        );
+    };
+
+    const selectedCount = selectedIds.length;
+
+    return (
+        <div>
+            <div className="flex items-center gap-2 mb-2">
+                <div className="relative flex-1">
+                    <i className="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none" />
+                    <input
+                        type="text"
+                        placeholder="Hledat kategorii..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        className="w-full pl-7 pr-7 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500"
+                    />
+                    {search && (
+                        <button
+                            type="button"
+                            onClick={() => setSearch('')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            tabIndex={-1}
+                        >
+                            <i className="fas fa-times text-xs" />
+                        </button>
+                    )}
+                </div>
+                {selectedCount > 0 && (
+                    <span className="text-xs text-red-600 font-medium whitespace-nowrap">{selectedCount} vybráno</span>
+                )}
+            </div>
+            <div ref={containerRef} className="max-h-56 overflow-y-auto border border-slate-300 rounded-md p-1 bg-white shadow-sm">
+                {categories.map(cat => renderCategory(cat, 0))}
+                {search && !categories.some(matchesSearch) && (
+                    <p className="text-sm text-slate-400 text-center py-3">Žádná kategorie nenalezena</p>
+                )}
+            </div>
         </div>
-        {category.children && category.children.map(child => (
-            <CategoryCheckbox
-                key={child.id}
-                category={child}
-                level={level + 1}
-                selectedIds={selectedIds}
-                onToggle={onToggle}
-            />
-        ))}
-    </div>
-);
+    );
+};
 
 const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, companyId, item, categories, initialEan }) => {
     const [name, setName] = useState('');
@@ -281,17 +402,11 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSave, onCancel, company
 
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Kategorie (lze vybrat více)</label>
-                    <div className="max-h-48 overflow-y-auto border border-slate-300 rounded-md p-2 bg-white shadow-sm">
-                        {categories.map(cat => (
-                            <CategoryCheckbox
-                                key={cat.id}
-                                category={cat}
-                                level={0}
-                                selectedIds={selectedCategoryIds}
-                                onToggle={handleCategoryToggle}
-                            />
-                        ))}
-                    </div>
+                    <CategoryTree
+                        categories={categories}
+                        selectedIds={selectedCategoryIds}
+                        onToggle={handleCategoryToggle}
+                    />
                 </div>
 
                 {/* Sekce Ceny */}

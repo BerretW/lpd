@@ -89,6 +89,21 @@ function getDirectChildren(cats: CategoryOut[], parentId: number | null): Catego
     return findCategory(cats, parentId)?.children ?? [];
 }
 
+interface PendingDrop {
+    draggingId: number;
+    targetId: number | null;
+    dragged: CategoryOut;
+    newName: string;
+    previousCategories: CategoryOut[];
+}
+
+interface LastAction {
+    categoryId: number;
+    previousParentId: number | null;
+    previousName: string;
+    previousCategories: CategoryOut[];
+}
+
 interface DragHandlers {
     draggingId: number | null;
     dragOverTarget: number | 'root' | null;
@@ -191,6 +206,9 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ companyId }) => {
 
     const [draggingId, setDraggingId] = useState<number | null>(null);
     const [dragOverTarget, setDragOverTarget] = useState<number | 'root' | null>(null);
+    const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
+    const [lastAction, setLastAction] = useState<LastAction | null>(null);
+    const [isConfirming, setIsConfirming] = useState(false);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -280,7 +298,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ companyId }) => {
         }
     };
 
-    const handleDrop = async (targetId: number | null) => {
+    const handleDrop = (targetId: number | null) => {
         if (draggingId === null) return;
         if (targetId === draggingId) { setDraggingId(null); setDragOverTarget(null); return; }
 
@@ -295,37 +313,81 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ companyId }) => {
         const dragged = findCategory(categories, draggingId);
         const currentParent = dragged?.parent_id ?? null;
         if (currentParent === targetId) { setDraggingId(null); setDragOverTarget(null); return; }
+        if (!dragged) { setDraggingId(null); setDragOverTarget(null); return; }
 
         // Detekce konfliktu názvu na cílovém místě
         const siblings = getDirectChildren(categories, targetId);
         const existingNames = new Set(siblings.map(s => s.name));
-        const newName = dragged && existingNames.has(dragged.name) ? `${dragged.name} - 2` : (dragged?.name ?? '');
+        const newName = existingNames.has(dragged.name) ? `${dragged.name} - 2` : dragged.name;
 
-        const localDraggingId = draggingId;
         setDraggingId(null);
         setDragOverTarget(null);
+        setLastAction(null);
+        setPendingDrop({ draggingId, targetId, dragged, newName, previousCategories: categories });
+    };
 
+    const cancelDrop = useCallback(() => setPendingDrop(null), []);
+
+    const confirmDrop = useCallback(async () => {
+        if (!pendingDrop) return;
+        const { draggingId: localId, targetId, dragged, newName, previousCategories } = pendingDrop;
+        setPendingDrop(null);
+        setIsConfirming(true);
         try {
             const updatePayload: { parent_id: number | null; name?: string } = { parent_id: targetId };
-            if (dragged && newName !== dragged.name) updatePayload.name = newName;
-            await api.updateCategory(companyId, localDraggingId, updatePayload);
+            if (newName !== dragged.name) updatePayload.name = newName;
+            await api.updateCategory(companyId, localId, updatePayload);
 
-            // Lokální aktualizace stavu – bez fetchData, stránka se nepřekreslí
+            setLastAction({
+                categoryId: localId,
+                previousParentId: dragged.parent_id ?? null,
+                previousName: dragged.name,
+                previousCategories,
+            });
+
             setCategories(prev => {
-                if (!dragged) return prev;
-                const { tree, removed } = removeFromTree(prev, localDraggingId);
+                const { tree, removed } = removeFromTree(prev, localId);
                 if (!removed) return prev;
                 return insertIntoTree(tree, targetId, removed, newName);
             });
 
-            // Rozbal cílovou kategorii, aby byl přesunutý uzel viditelný
             if (targetId !== null) {
                 setExpandedIds(prev => new Set([...prev, targetId]));
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Nepodařilo se přesunout kategorii.');
+        } finally {
+            setIsConfirming(false);
         }
-    };
+    }, [pendingDrop, companyId]);
+
+    const undoLastAction = useCallback(async () => {
+        if (!lastAction) return;
+        const { categoryId, previousParentId, previousName, previousCategories } = lastAction;
+        setLastAction(null);
+        try {
+            const current = findCategory(categories, categoryId);
+            const updatePayload: { parent_id: number | null; name?: string } = { parent_id: previousParentId };
+            if (current && current.name !== previousName) updatePayload.name = previousName;
+            await api.updateCategory(companyId, categoryId, updatePayload);
+            setCategories(previousCategories);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Nepodařilo se vrátit akci.');
+        }
+    }, [lastAction, categories, companyId]);
+
+    // Potvrzení mezerníkem
+    useEffect(() => {
+        if (!pendingDrop) return;
+        const handler = (e: KeyboardEvent) => {
+            const tag = (e.target as HTMLElement)?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            if (e.code === 'Space') { e.preventDefault(); confirmDrop(); }
+            else if (e.key === 'Escape') { cancelDrop(); }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [pendingDrop, confirmDrop, cancelDrop]);
 
     const drag: DragHandlers = {
         draggingId,
@@ -345,13 +407,39 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ companyId }) => {
     return (
         <div>
             <div className="flex justify-between mb-4">
-                <Button variant="secondary" onClick={() => setExpandedIds(new Set())} title="Sbalit vše">
-                    <Icon name="fa-compress-alt" className="mr-2" /> Sbalit vše
-                </Button>
+                <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setExpandedIds(new Set())} title="Sbalit vše">
+                        <Icon name="fa-compress-alt" className="mr-2" /> Sbalit vše
+                    </Button>
+                    {lastAction && !pendingDrop && (
+                        <Button variant="secondary" onClick={undoLastAction} title="Vrátit poslední přesun">
+                            <Icon name="fa-undo" className="mr-2" /> Zpět
+                        </Button>
+                    )}
+                </div>
                 <Button onClick={handleAddTopLevel}>
                     <Icon name="fa-plus" className="mr-2" /> Nová hlavní kategorie
                 </Button>
             </div>
+
+            {pendingDrop && (
+                <div className="mb-3 flex items-center gap-3 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                    <Icon name="fa-arrows-alt" className="text-amber-500 flex-shrink-0" />
+                    <span className="text-sm text-amber-800 flex-1">
+                        Přesunout <strong>{pendingDrop.dragged.name}</strong> do{' '}
+                        {pendingDrop.targetId !== null
+                            ? <strong>{findCategory(categories, pendingDrop.targetId)?.name ?? '?'}</strong>
+                            : <strong>hlavní úrovně</strong>
+                        }?
+                    </span>
+                    <Button onClick={confirmDrop} disabled={isConfirming} className="!text-sm !py-1 !px-3">
+                        <Icon name="fa-check" className="mr-1" /> Potvrdit <span className="text-xs opacity-60 ml-1">[mezerník]</span>
+                    </Button>
+                    <Button variant="secondary" onClick={cancelDrop} className="!text-sm !py-1 !px-3">
+                        Zrušit
+                    </Button>
+                </div>
+            )}
 
             {/* Drop zóna pro přesun do hlavní úrovně */}
             <div
