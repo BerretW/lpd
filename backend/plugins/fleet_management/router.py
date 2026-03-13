@@ -5,9 +5,9 @@ from datetime import date, timedelta
 
 from app.db.database import get_db
 from app.core.dependencies import require_company_access, require_admin_access
-from .models import Vehicle, VehicleLog
+from .models import Vehicle, VehicleLog, FuelLog
 from .schemas import VehicleCreate, VehicleOut, VehicleLogCreate, VehicleLogOut, VehicleUpdate, VehicleAlertOut
-from .schemas import VehicleLogUpdate # <--- Nezapomeňte přidat import
+from .schemas import VehicleLogUpdate, FuelLogCreate, FuelLogOut, FuelLogUpdate
 router = APIRouter(prefix="/plugins/fleet", tags=["plugin-fleet-management"])
 
 # --- VOZIDLA ---
@@ -193,5 +193,84 @@ async def delete_log(
     if not log:
         raise HTTPException(404, "Záznam nenalezen.")
         
+    await db.delete(log)
+    await db.commit()
+
+
+# --- TANKOVÁNÍ ---
+
+@router.post("/{company_id}/fuel", response_model=FuelLogOut)
+async def add_fuel_log(
+    company_id: int,
+    payload: FuelLogCreate,
+    db: AsyncSession = Depends(get_db),
+    token: dict = Depends(require_company_access)
+):
+    """Zapíše tankování a aktualizuje tachometr vozidla."""
+    user_id = int(token.get("sub"))
+
+    stmt = select(Vehicle).where(Vehicle.id == payload.vehicle_id, Vehicle.company_id == company_id)
+    vehicle = (await db.execute(stmt)).scalar_one_or_none()
+    if not vehicle:
+        raise HTTPException(404, "Vozidlo nenalezeno.")
+
+    log = FuelLog(**payload.dict(), driver_id=user_id)
+    db.add(log)
+
+    if payload.odometer_km > vehicle.current_km:
+        vehicle.current_km = payload.odometer_km
+
+    await db.commit()
+    await db.refresh(log)
+    return log
+
+
+@router.get("/{company_id}/fuel", response_model=list[FuelLogOut])
+async def list_fuel_logs(
+    company_id: int,
+    vehicle_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access)
+):
+    stmt = select(FuelLog).join(Vehicle).where(Vehicle.company_id == company_id)
+    if vehicle_id:
+        stmt = stmt.where(FuelLog.vehicle_id == vehicle_id)
+    stmt = stmt.order_by(FuelLog.fuel_date.desc())
+    return (await db.execute(stmt)).scalars().all()
+
+
+@router.patch("/{company_id}/fuel/{log_id}", response_model=FuelLogOut)
+async def update_fuel_log(
+    company_id: int,
+    log_id: int,
+    payload: FuelLogUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin_access)
+):
+    stmt = select(FuelLog).where(FuelLog.id == log_id)
+    log = (await db.execute(stmt)).scalar_one_or_none()
+    if not log:
+        raise HTTPException(404, "Záznam tankování nenalezen.")
+
+    for k, v in payload.dict(exclude_unset=True).items():
+        setattr(log, k, v)
+
+    await db.commit()
+    await db.refresh(log)
+    return log
+
+
+@router.delete("/{company_id}/fuel/{log_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_fuel_log(
+    company_id: int,
+    log_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin_access)
+):
+    stmt = select(FuelLog).where(FuelLog.id == log_id)
+    log = (await db.execute(stmt)).scalar_one_or_none()
+    if not log:
+        raise HTTPException(404, "Záznam tankování nenalezen.")
+
     await db.delete(log)
     await db.commit()

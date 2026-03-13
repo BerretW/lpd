@@ -638,8 +638,20 @@ export const getFleetAlerts = (cid: number): Promise<VehicleAlertOut[]> =>
 export const updateFleetLog = (cid: number, logId: number, data: any): Promise<VehicleLogOut> => 
     fetchApi(`/plugins/fleet/${cid}/logs/${logId}`, { method: 'PATCH', body: JSON.stringify(data) });
 
-export const deleteFleetLog = (cid: number, logId: number): Promise<void> => 
+export const deleteFleetLog = (cid: number, logId: number): Promise<void> =>
     fetchApi(`/plugins/fleet/${cid}/logs/${logId}`, { method: 'DELETE' });
+
+export const getFuelLogs = (cid: number, vid?: number): Promise<import('./types').FuelLogOut[]> =>
+    fetchApi(`/plugins/fleet/${cid}/fuel${vid ? `?vehicle_id=${vid}` : ''}`);
+
+export const createFuelLog = (cid: number, data: any): Promise<import('./types').FuelLogOut> =>
+    fetchApi(`/plugins/fleet/${cid}/fuel`, { method: 'POST', body: JSON.stringify(data) });
+
+export const updateFuelLog = (cid: number, logId: number, data: any): Promise<import('./types').FuelLogOut> =>
+    fetchApi(`/plugins/fleet/${cid}/fuel/${logId}`, { method: 'PATCH', body: JSON.stringify(data) });
+
+export const deleteFuelLog = (cid: number, logId: number): Promise<void> =>
+    fetchApi(`/plugins/fleet/${cid}/fuel/${logId}`, { method: 'DELETE' });
 
 // --- INVENTORY WIPE ---
 export const wipeInventoryItems = (cid: number): Promise<void> =>

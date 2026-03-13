@@ -12,6 +12,8 @@ import WorkReport from './WorkReport';
 import ErrorModal from './common/ErrorModal';
 import ManageTaskMaterialsModal from './ManageTaskMaterialsModal';
 import MyTasksView from './MyTasksView';
+import TripModal from './TripModal';
+import FuelModal from './FuelModal';
 import { ExtensionPoint } from '../lib/PluginSystem';
 
 interface AttendanceCalendarProps {
@@ -126,14 +128,16 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ companyId, user
     const [activeTab, setActiveTab] = useState<'calendar' | 'tasks'>('calendar');
     
     // Unified modal state
-    type ModalState = 
+    type ModalState =
         | { type: 'NONE' }
         | { type: 'ADD'; payload: { entryType: TimeLogEntryType; initialData?: any } }
         | { type: 'EDIT'; payload: TimeLogOut }
         | { type: 'DELETE'; payload: TimeLogOut }
         | { type: 'MONTHLY_REPORT' }
         | { type: 'TEMPLATE_FORM' }
-        | { type: 'MANAGE_MATERIALS', payload: ServiceReportDataOut };
+        | { type: 'MANAGE_MATERIALS', payload: ServiceReportDataOut }
+        | { type: 'TRIP' }
+        | { type: 'FUEL' };
 
     const [modalState, setModalState] = useState<ModalState>({ type: 'NONE' });
 
@@ -306,6 +310,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ companyId, user
                 return <WorkReport onClose={() => setModalState({ type: 'NONE' })} companyId={companyId} userId={viewingUserId} userEmail={viewingUserEmail} initialDate={selectedDate} />;
             case 'TEMPLATE_FORM':
                 return <TemplateDayForm companyId={companyId} userId={userId} onClose={() => setModalState({ type: 'NONE' })} />;
+            case 'TRIP':
+                return <TripModal companyId={companyId} date={selectedDate} onClose={() => setModalState({ type: 'NONE' })} onSave={() => setModalState({ type: 'NONE' })} />;
+            case 'FUEL':
+                return <FuelModal companyId={companyId} date={selectedDate} onClose={() => setModalState({ type: 'NONE' })} onSave={() => setModalState({ type: 'NONE' })} />;
             case 'NONE':
             default:
                 return null;
@@ -391,6 +399,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ companyId, user
                                 <div className="flex items-center"><span className="bg-gray-800 text-white text-xs px-2 py-1 rounded mr-2">Dovolená</span><Button className="!w-12 !h-12 !rounded-full" variant="secondary" onClick={() => setModalState({ type: 'ADD', payload: { entryType: TimeLogEntryType.Vacation } })}><Icon name="fa-sun"/></Button></div>
                                 <div className="flex items-center"><span className="bg-gray-800 text-white text-xs px-2 py-1 rounded mr-2">Nemoc</span><Button className="!w-12 !h-12 !rounded-full" variant="secondary" onClick={() => setModalState({ type: 'ADD', payload: { entryType: TimeLogEntryType.SickDay } })}><Icon name="fa-medkit"/></Button></div>
                                 <div className="flex items-center"><span className="bg-gray-800 text-white text-xs px-2 py-1 rounded mr-2">Vzorový den</span><Button className="!w-12 !h-12 !rounded-full" variant="secondary" onClick={() => setModalState({ type: 'TEMPLATE_FORM' })}><Icon name="fa-star"/></Button></div>
+                                <div className="flex items-center"><span className="bg-gray-800 text-white text-xs px-2 py-1 rounded mr-2">Přesun / Jízda</span><Button className="!w-12 !h-12 !rounded-full" variant="secondary" onClick={() => setModalState({ type: 'TRIP' })}><Icon name="fa-car"/></Button></div>
+                                <div className="flex items-center"><span className="bg-gray-800 text-white text-xs px-2 py-1 rounded mr-2">Tankování</span><Button className="!w-12 !h-12 !rounded-full" variant="secondary" onClick={() => setModalState({ type: 'FUEL' })}><Icon name="fa-gas-pump"/></Button></div>
                             </div>
                         )}
                         <button onClick={() => setIsFabOpen(!isFabOpen)} className="bg-red-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-red-700 transition-transform duration-300" style={{ transform: isFabOpen ? 'rotate(45deg)' : 'rotate(0)' }}>

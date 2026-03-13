@@ -29,15 +29,32 @@ class VehicleLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     vehicle_id: Mapped[int] = mapped_column(ForeignKey("plugin_fleet_vehicles.id", ondelete="CASCADE"), index=True)
-    
+
     # --- ZDE BYLA CHYBA: Změněno z Mapped[int] na Mapped[int | None] ---
     driver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    
+
     travel_date: Mapped[datetime] = mapped_column(Date, default=datetime.utcnow)
     start_location: Mapped[str] = mapped_column(String(100))
     end_location: Mapped[str] = mapped_column(String(100))
-    
+
     start_km: Mapped[float] = mapped_column(Float)
     end_km: Mapped[float] = mapped_column(Float)
-    
+
     notes: Mapped[str | None] = mapped_column(String(255))
+
+
+class FuelLog(Base):
+    __tablename__ = "plugin_fleet_fuel_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("plugin_fleet_vehicles.id", ondelete="CASCADE"), index=True)
+    driver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    fuel_date: Mapped[datetime] = mapped_column(Date, default=datetime.utcnow)
+    fuel_type: Mapped[str] = mapped_column(String(30))  # Benzín, Nafta, LPG, AdBlue, ...
+    liters: Mapped[float] = mapped_column(Float)
+    total_price: Mapped[float] = mapped_column(Float)
+    location: Mapped[str | None] = mapped_column(String(150))
+    odometer_km: Mapped[float] = mapped_column(Float)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

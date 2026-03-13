@@ -520,3 +520,15 @@ export interface VehicleAlertOut extends VehicleOut {
     days_remaining?: number;
     km_overdue?: number;
 }
+
+export interface FuelLogOut {
+    id: number;
+    vehicle_id: number;
+    driver_id?: number;
+    fuel_date: string;
+    fuel_type: string;
+    liters: number;
+    total_price: number;
+    location?: string;
+    odometer_km: number;
+}

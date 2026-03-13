@@ -62,3 +62,27 @@ class VehicleLogOut(VehicleLogBase):
     id: int
     driver_id: Optional[int]
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Fuel Log Schemas ---
+class FuelLogCreate(BaseModel):
+    vehicle_id: int
+    fuel_date: date
+    fuel_type: str
+    liters: float
+    total_price: float
+    location: Optional[str] = None
+    odometer_km: float
+
+class FuelLogUpdate(BaseModel):
+    fuel_date: Optional[date] = None
+    fuel_type: Optional[str] = None
+    liters: Optional[float] = None
+    total_price: Optional[float] = None
+    location: Optional[str] = None
+    odometer_km: Optional[float] = None
+
+class FuelLogOut(FuelLogCreate):
+    id: int
+    driver_id: Optional[int]
+    model_config = ConfigDict(from_attributes=True)
