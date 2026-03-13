@@ -20,16 +20,81 @@ interface InventoryProps {
   companyId: number;
 }
 
-const CategoryOption: React.FC<{ category: CategoryOut; level: number }> = ({ category, level }) => (
-    <>
-        <option value={category.id}>
-            {'--'.repeat(level)} {category.name}
-        </option>
-        {category.children.map(child => (
-            <CategoryOption key={child.id} category={child} level={level + 1} />
-        ))}
-    </>
-);
+const CategoryDrillDown: React.FC<{
+    categories: CategoryOut[];
+    selectedId: string;
+    onSelect: (id: string) => void;
+}> = ({ categories, selectedId, onSelect }) => {
+    const [path, setPath] = useState<CategoryOut[]>([]);
+
+    const currentLevel = path.length === 0 ? categories : path[path.length - 1].children;
+
+    const handleClick = (cat: CategoryOut) => {
+        onSelect(String(cat.id));
+        if (cat.children.length > 0) setPath([...path, cat]);
+    };
+
+    const handleBreadcrumb = (index: number) => {
+        if (index === -1) { setPath([]); onSelect(''); }
+        else { setPath(path.slice(0, index + 1)); onSelect(String(path[index].id)); }
+    };
+
+    return (
+        <div>
+            <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Kategorie:</span>
+                <div className="flex items-center flex-wrap gap-1 text-xs text-slate-500">
+                    <button onClick={() => handleBreadcrumb(-1)} className={`hover:text-red-600 ${!selectedId ? 'font-semibold text-red-600' : ''}`}>Vše</button>
+                    {path.map((cat, i) => (
+                        <React.Fragment key={cat.id}>
+                            <span className="text-slate-300">›</span>
+                            <button onClick={() => handleBreadcrumb(i)} className={`hover:text-red-600 ${selectedId === String(cat.id) ? 'font-semibold text-red-600' : ''}`}>{cat.name}</button>
+                        </React.Fragment>
+                    ))}
+                </div>
+            </div>
+            {categories.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">Žádné kategorie</p>
+            ) : (
+                <div className="flex flex-wrap gap-2">
+                    {currentLevel.map(cat => (
+                        <button
+                            key={cat.id}
+                            onClick={() => handleClick(cat)}
+                            className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm border transition-colors ${
+                                selectedId === String(cat.id)
+                                    ? 'bg-red-600 text-white border-red-600'
+                                    : 'bg-white text-slate-700 border-slate-300 hover:border-red-400 hover:text-red-600'
+                            }`}
+                        >
+                            {cat.name}
+                            {cat.children.length > 0 && <span className="text-xs opacity-60">›</span>}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const PAGE_SIZE = 50;
+
+function collectCategoryIds(categories: CategoryOut[], id: number): Set<number> {
+    const result = new Set<number>();
+    function collectAll(cat: CategoryOut) {
+        result.add(cat.id);
+        for (const child of cat.children) collectAll(child);
+    }
+    function findAndCollect(cats: CategoryOut[]): boolean {
+        for (const cat of cats) {
+            if (cat.id === id) { collectAll(cat); return true; }
+            if (findAndCollect(cat.children)) return true;
+        }
+        return false;
+    }
+    findAndCollect(categories);
+    return result;
+}
 
 const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
   const { role } = useAuth();
@@ -49,7 +114,10 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
-  
+  const [selectedManufacturerId, setSelectedManufacturerId] = useState('');
+  const [selectedSupplierId, setSelectedSupplierId] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+
   const accessibleLocationIds = useMemo(() => {
     if (isAdmin) return null;
     return new Set(accessibleLocations.map(l => l.id));
@@ -59,13 +127,12 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
     if (isAdmin || !accessibleLocationIds) return item.total_quantity;
     return item.locations.reduce((sum, loc) => accessibleLocationIds.has(loc.location.id) ? sum + loc.quantity : sum, 0);
   }, [isAdmin, accessibleLocationIds]);
-  
+
   const fetchData = useCallback(async (isInitial = false) => {
     try {
         setLoading(true);
-        const categoryToFilter = selectedCategoryId ? parseInt(selectedCategoryId) : undefined;
         const [itemData, categoryData, accessibleLocsData] = await Promise.all([
-            api.getInventoryItems(companyId, categoryToFilter),
+            api.getInventoryItems(companyId),
             isInitial ? api.getCategories(companyId) : Promise.resolve(undefined),
             (isInitial && !isAdmin) ? api.getMyLocations(companyId) : Promise.resolve(undefined)
         ]);
@@ -79,24 +146,50 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
     } finally {
         setLoading(false);
     }
-  }, [companyId, selectedCategoryId, isAdmin]);
+  }, [companyId, isAdmin]);
 
   useEffect(() => { fetchData(true); }, [companyId, isAdmin]);
-  useEffect(() => { if (selectedCategoryId !== undefined) fetchData(false); }, [selectedCategoryId, fetchData]);
-  
+
+  const manufacturers = useMemo(() => {
+    const map = new Map<number, string>();
+    items.forEach(item => { if (item.manufacturer) map.set(item.manufacturer.id, item.manufacturer.name); });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [items]);
+
+  const suppliers = useMemo(() => {
+    const map = new Map<number, string>();
+    items.forEach(item => { if (item.supplier) map.set(item.supplier.id, item.supplier.name); });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [items]);
+
+  const selectedCategoryIds = useMemo(() => {
+    if (!selectedCategoryId) return null;
+    return collectCategoryIds(categories, parseInt(selectedCategoryId));
+  }, [selectedCategoryId, categories]);
+
   const filteredItems = useMemo(() => {
     let itemsToFilter = isAdmin ? items : items.filter(item => item.locations.some(loc => accessibleLocationIds?.has(loc.location.id)));
-    if (!searchTerm) return itemsToFilter;
-    const lowercasedTerm = searchTerm.toLowerCase();
-    
-    return itemsToFilter.filter(item => 
-        item.name.toLowerCase().includes(lowercasedTerm) || 
-        item.sku.toLowerCase().includes(lowercasedTerm) ||
-        (item.alternative_sku && item.alternative_sku.toLowerCase().includes(lowercasedTerm)) ||
-        (item.manufacturer?.name && item.manufacturer.name.toLowerCase().includes(lowercasedTerm)) ||
-        (item.supplier?.name && item.supplier.name.toLowerCase().includes(lowercasedTerm))
-    );
-  }, [items, searchTerm, isAdmin, accessibleLocationIds]);
+    if (searchTerm) {
+        const lowercasedTerm = searchTerm.toLowerCase();
+        itemsToFilter = itemsToFilter.filter(item =>
+            item.name.toLowerCase().includes(lowercasedTerm) ||
+            item.sku.toLowerCase().includes(lowercasedTerm) ||
+            (item.alternative_sku && item.alternative_sku.toLowerCase().includes(lowercasedTerm))
+        );
+    }
+    if (selectedCategoryIds) itemsToFilter = itemsToFilter.filter(item => item.categories?.some(c => selectedCategoryIds.has(c.id)));
+    if (selectedManufacturerId) itemsToFilter = itemsToFilter.filter(item => item.manufacturer?.id === parseInt(selectedManufacturerId));
+    if (selectedSupplierId) itemsToFilter = itemsToFilter.filter(item => item.supplier?.id === parseInt(selectedSupplierId));
+    return itemsToFilter;
+  }, [items, searchTerm, selectedCategoryIds, selectedManufacturerId, selectedSupplierId, isAdmin, accessibleLocationIds]);
+
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedCategoryId, selectedManufacturerId, selectedSupplierId]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredItems.slice(start, start + PAGE_SIZE);
+  }, [filteredItems, currentPage]);
 
   const handleSave = async (data: { itemData: any, imageFile: File | null }) => {
       const { itemData, imageFile } = data;
@@ -142,12 +235,19 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
       </div>
 
        {view === 'items' && (
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-100 rounded-lg">
-                <Input placeholder={t('inventory.searchPlaceholder')} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                <select value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm">
-                    <option value="">{t('inventory.allCategories')}</option>
-                    {categories.map(cat => <CategoryOption key={cat.id} category={cat} level={0} />)}
-                </select>
+            <div className="mb-4 p-4 bg-slate-100 rounded-lg space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Input placeholder={t('inventory.searchPlaceholder')} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    <select value={selectedManufacturerId} onChange={e => setSelectedManufacturerId(e.target.value)} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm">
+                        <option value="">Všichni výrobci</option>
+                        {manufacturers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                    </select>
+                    <select value={selectedSupplierId} onChange={e => setSelectedSupplierId(e.target.value)} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm">
+                        <option value="">Všichni dodavatelé</option>
+                        {suppliers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                    </select>
+                </div>
+                <CategoryDrillDown categories={categories} selectedId={selectedCategoryId} onSelect={setSelectedCategoryId} />
             </div>
        )}
 
@@ -158,6 +258,7 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
       </nav>
 
       {view === 'items' ? (
+          <>
           <div className="bg-white shadow-md rounded-lg overflow-hidden">
             <table className="min-w-full leading-normal">
               <thead>
@@ -173,7 +274,7 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map(item => {
+                {paginatedItems.map(item => {
                     const accessibleQuantity = getAccessibleStock(item);
                     const isLowStock = isAdmin && item.is_monitored_for_stock && item.low_stock_threshold != null && item.total_quantity <= item.low_stock_threshold;
                     
@@ -256,6 +357,47 @@ const Inventory: React.FC<InventoryProps> = ({ companyId }) => {
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+              <div className="flex items-center justify-between px-5 py-3 bg-white border-t border-slate-200 rounded-b-lg">
+                  <span className="text-sm text-slate-500">
+                      {filteredItems.length} položek &mdash; strana {currentPage} z {totalPages}
+                  </span>
+                  <div className="flex items-center gap-1">
+                      <button
+                          onClick={() => setCurrentPage(1)}
+                          disabled={currentPage === 1}
+                          className="px-2 py-1 rounded text-sm border border-slate-300 disabled:opacity-40 hover:bg-slate-100"
+                      >«</button>
+                      <button
+                          onClick={() => setCurrentPage(p => p - 1)}
+                          disabled={currentPage === 1}
+                          className="px-3 py-1 rounded text-sm border border-slate-300 disabled:opacity-40 hover:bg-slate-100"
+                      >‹</button>
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+                          const page = start + i;
+                          return (
+                              <button
+                                  key={page}
+                                  onClick={() => setCurrentPage(page)}
+                                  className={`px-3 py-1 rounded text-sm border ${page === currentPage ? 'bg-red-600 text-white border-red-600' : 'border-slate-300 hover:bg-slate-100'}`}
+                              >{page}</button>
+                          );
+                      })}
+                      <button
+                          onClick={() => setCurrentPage(p => p + 1)}
+                          disabled={currentPage === totalPages}
+                          className="px-3 py-1 rounded text-sm border border-slate-300 disabled:opacity-40 hover:bg-slate-100"
+                      >›</button>
+                      <button
+                          onClick={() => setCurrentPage(totalPages)}
+                          disabled={currentPage === totalPages}
+                          className="px-2 py-1 rounded text-sm border border-slate-300 disabled:opacity-40 hover:bg-slate-100"
+                      >»</button>
+                  </div>
+              </div>
+          )}
+          </>
       ) : view === 'locations' ? <LocationManager companyId={companyId} /> : <CategoryManager companyId={companyId} /> }
 
       {isFormModalOpen && (

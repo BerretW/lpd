@@ -22,6 +22,24 @@ function collectIds(category: CategoryOut): number[] {
     return ids;
 }
 
+function findCategory(cats: CategoryOut[], id: number): CategoryOut | null {
+    for (const cat of cats) {
+        if (cat.id === id) return cat;
+        const found = findCategory(cat.children, id);
+        if (found) return found;
+    }
+    return null;
+}
+
+interface DragHandlers {
+    draggingId: number | null;
+    dragOverTarget: number | 'root' | null;
+    onDragStart: (id: number) => void;
+    onDragEnd: () => void;
+    onDragOver: (target: number | 'root') => void;
+    onDrop: (targetId: number | null) => void;
+}
+
 const CategoryNode: React.FC<{
     category: CategoryOut;
     onEdit: (category: CategoryOut) => void;
@@ -29,7 +47,8 @@ const CategoryNode: React.FC<{
     onAddSub: (parentId: number) => void;
     depth?: number;
     collapseSignal?: number;
-}> = ({ category, onEdit, onDelete, onAddSub, depth = 0, collapseSignal }) => {
+    drag: DragHandlers;
+}> = ({ category, onEdit, onDelete, onAddSub, depth = 0, collapseSignal, drag }) => {
     const [expanded, setExpanded] = useState(depth === 0);
     const hasChildren = category.children.length > 0;
 
@@ -39,10 +58,30 @@ const CategoryNode: React.FC<{
         }
     }, [collapseSignal]);
 
+    const isBeingDragged = drag.draggingId === category.id;
+    const isDropTarget = drag.dragOverTarget === category.id && !isBeingDragged;
+
     return (
         <div className={depth > 0 ? "ml-6 pl-4 border-l border-slate-200" : ""}>
-            <div className="flex justify-between items-center py-2 px-3 hover:bg-slate-100 rounded-md">
+            <div
+                draggable
+                onDragStart={(e: React.DragEvent) => { e.stopPropagation(); drag.onDragStart(category.id); }}
+                onDragEnd={(e: React.DragEvent) => { e.stopPropagation(); drag.onDragEnd(); }}
+                onDragOver={(e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); drag.onDragOver(category.id); }}
+                onDrop={(e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); drag.onDrop(category.id); }}
+                className={[
+                    "flex justify-between items-center py-2 px-3 rounded-md transition-colors",
+                    isBeingDragged ? "opacity-40 bg-slate-100" : "hover:bg-slate-100",
+                    isDropTarget ? "bg-blue-50 ring-2 ring-blue-400 ring-inset" : "",
+                ].join(" ")}
+            >
                 <div className="flex items-center gap-2 min-w-0">
+                    <span
+                        className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing flex-shrink-0 w-4"
+                        title="Přetáhněte pro přesun"
+                    >
+                        <Icon name="fa-grip-vertical" />
+                    </span>
                     {hasChildren ? (
                         <button
                             onClick={() => setExpanded((e: boolean) => !e)}
@@ -57,6 +96,9 @@ const CategoryNode: React.FC<{
                     <span className="font-medium text-slate-800 truncate">{category.name}</span>
                     {hasChildren && !expanded && (
                         <span className="text-xs text-slate-400 flex-shrink-0">({category.children.length})</span>
+                    )}
+                    {isDropTarget && (
+                        <span className="text-xs text-blue-500 flex-shrink-0 font-medium">← přesunout sem jako podkategorii</span>
                     )}
                 </div>
                 <div className="space-x-2 flex-shrink-0">
@@ -74,7 +116,7 @@ const CategoryNode: React.FC<{
             {expanded && hasChildren && (
                 <div>
                     {category.children.map((child: CategoryOut) => (
-                        <CategoryNode key={child.id} category={child} onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} depth={depth + 1} collapseSignal={collapseSignal} />
+                        <CategoryNode key={child.id} category={child} onEdit={onEdit} onDelete={onDelete} onAddSub={onAddSub} depth={depth + 1} collapseSignal={collapseSignal} drag={drag} />
                     ))}
                 </div>
             )}
@@ -94,6 +136,9 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ companyId }) => {
 
     const [categoryToDelete, setCategoryToDelete] = useState<CategoryOut | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    const [draggingId, setDraggingId] = useState<number | null>(null);
+    const [dragOverTarget, setDragOverTarget] = useState<number | 'root' | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -171,6 +216,45 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ companyId }) => {
         }
     };
 
+    const handleDrop = async (targetId: number | null) => {
+        if (draggingId === null) return;
+        if (targetId === draggingId) { setDraggingId(null); setDragOverTarget(null); return; }
+
+        // Zabraň cyklu – nelze přesunout na vlastního potomka
+        if (targetId !== null) {
+            const dragged = findCategory(categories, draggingId);
+            if (dragged && collectIds(dragged).includes(targetId)) {
+                setDraggingId(null);
+                setDragOverTarget(null);
+                return;
+            }
+        }
+
+        // Zkontroluj, zda se parent_id opravdu mění
+        const dragged = findCategory(categories, draggingId);
+        const currentParent = dragged?.parent_id ?? null;
+        if (currentParent === targetId) { setDraggingId(null); setDragOverTarget(null); return; }
+
+        try {
+            await api.updateCategory(companyId, draggingId, { parent_id: targetId });
+            await fetchData();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Nepodařilo se přesunout kategorii.');
+        } finally {
+            setDraggingId(null);
+            setDragOverTarget(null);
+        }
+    };
+
+    const drag: DragHandlers = {
+        draggingId,
+        dragOverTarget,
+        onDragStart: (id) => setDraggingId(id),
+        onDragEnd: () => { setDraggingId(null); setDragOverTarget(null); },
+        onDragOver: (target) => setDragOverTarget(target),
+        onDrop: handleDrop,
+    };
+
     const hasChildren = categoryToDelete ? categoryToDelete.children.length > 0 : false;
 
     if (loading) {
@@ -187,9 +271,27 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({ companyId }) => {
                     <Icon name="fa-plus" className="mr-2" /> Nová hlavní kategorie
                 </Button>
             </div>
+
+            {/* Drop zóna pro přesun do hlavní úrovně */}
+            <div
+                onDragOver={(e) => { e.preventDefault(); drag.onDragOver('root'); }}
+                onDrop={(e) => { e.preventDefault(); handleDrop(null); }}
+                className={[
+                    "mb-3 rounded-lg border-2 border-dashed text-center text-sm transition-all duration-150",
+                    draggingId !== null
+                        ? dragOverTarget === 'root'
+                            ? "py-3 border-blue-400 bg-blue-50 text-blue-600 font-medium"
+                            : "py-3 border-slate-300 text-slate-400"
+                        : "py-0 border-transparent text-transparent select-none pointer-events-none",
+                ].join(" ")}
+            >
+                <Icon name="fa-level-up-alt" className="mr-2" />
+                Přetáhněte sem pro přesun do hlavní úrovně
+            </div>
+
             <div className="space-y-2">
                 {categories.length > 0 ? categories.map((cat: CategoryOut) => (
-                    <CategoryNode key={cat.id} category={cat} onEdit={handleEdit} onDelete={handleDelete} onAddSub={handleAddSub} collapseSignal={collapseSignal} />
+                    <CategoryNode key={cat.id} category={cat} onEdit={handleEdit} onDelete={handleDelete} onAddSub={handleAddSub} collapseSignal={collapseSignal} drag={drag} />
                 )) : (
                     <p className="text-slate-500 text-center p-8">Zatím nebyly vytvořeny žádné kategorie.</p>
                 )}
