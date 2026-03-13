@@ -168,6 +168,10 @@ async def import_inventory_from_excel(
                 continue
 
             # Načtení hodnot
+            alt_sku_val = get_val(row, 'alt_sku')
+            alt_sku = str(alt_sku_val).strip() if alt_sku_val else None
+            ean_val = get_val(row, 'ean')
+            ean = str(ean_val).strip() if ean_val else None
             price_val = get_val(row, 'price')
             price = float(price_val) if price_val else 0.0
             desc_val = get_val(row, 'description')
@@ -209,6 +213,10 @@ async def import_inventory_from_excel(
             if item:
                 # Update
                 item.name = str(name)
+                if alt_sku:
+                    item.alternative_sku = alt_sku
+                if ean:
+                    item.ean = ean
                 if price > 0:
                     item.price = price
                 if description:
@@ -230,6 +238,8 @@ async def import_inventory_from_excel(
                     company_id=company_id,
                     name=str(name),
                     sku=sku,
+                    alternative_sku=alt_sku,
+                    ean=ean,
                     price=price,
                     description=description,
                     supplier_id=supplier.id if supplier else None,

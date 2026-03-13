@@ -11,6 +11,8 @@ const MAX_CATEGORY_LEVELS = 9;
 const SYSTEM_FIELDS = [
     { key: 'name', label: 'Název položky', required: true },
     { key: 'sku', label: 'SKU (Kód)', required: true },
+    { key: 'alt_sku', label: 'Alt. SKU (Dodavatel)', required: false },
+    { key: 'ean', label: 'EAN', required: false },
     { key: 'supplier', label: 'Dodavatel', required: false },
     { key: 'manufacturer', label: 'Výrobce', required: false },
     { key: 'price', label: 'Nákupní cena', required: false },

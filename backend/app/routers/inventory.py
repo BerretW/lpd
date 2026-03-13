@@ -79,7 +79,7 @@ async def list_inventory_items(
     company_id: int,
     category_id: int | None = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 10000,
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
