@@ -73,6 +73,34 @@ async def get_location_by_name(db: AsyncSession, company_id: int, location_name:
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
+
+async def get_or_create_supplier(db: AsyncSession, company_id: int, name: str) -> Optional[Supplier]:
+    """Najde nebo vytvoří dodavatele podle jména."""
+    name = name.strip()
+    if not name:
+        return None
+    stmt = select(Supplier).where(Supplier.company_id == company_id, Supplier.name == name)
+    supplier = (await db.execute(stmt)).scalar_one_or_none()
+    if not supplier:
+        supplier = Supplier(company_id=company_id, name=name)
+        db.add(supplier)
+        await db.flush()
+    return supplier
+
+
+async def get_or_create_manufacturer(db: AsyncSession, company_id: int, name: str) -> Optional[Manufacturer]:
+    """Najde nebo vytvoří výrobce podle jména."""
+    name = name.strip()
+    if not name:
+        return None
+    stmt = select(Manufacturer).where(Manufacturer.company_id == company_id, Manufacturer.name == name)
+    manufacturer = (await db.execute(stmt)).scalar_one_or_none()
+    if not manufacturer:
+        manufacturer = Manufacturer(company_id=company_id, name=name)
+        db.add(manufacturer)
+        await db.flush()
+    return manufacturer
+
 # --- ENDPOINTY ---
 
 @router.post("/preview")
@@ -123,21 +151,23 @@ async def import_inventory_from_excel(
 
     def get_val(row_data, field_key):
         idx = col_map.get(field_key)
-        if idx is not None and idx >= 0 and idx < len(row_data):
+        if idx is not None and isinstance(idx, int) and 0 <= idx < len(row_data):
             return row_data[idx]
         return None
+
+    # Indexy sloupců pro hierarchii kategorií (seznam čísel)
+    category_level_indices: List[int] = col_map.get('category_levels', [])
 
     for index, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         try:
             name = get_val(row, 'name')
             sku = str(get_val(row, 'sku')).strip() if get_val(row, 'sku') else None
-            
+
             if not name or not sku:
                 stats["skipped"] += 1
                 continue
 
             # Načtení hodnot
-            cat_val = get_val(row, 'category')
             price_val = get_val(row, 'price')
             price = float(price_val) if price_val else 0.0
             desc_val = get_val(row, 'description')
@@ -147,15 +177,25 @@ async def import_inventory_from_excel(
             loc_val = get_val(row, 'location')
             location_name = str(loc_val).strip() if loc_val else None
 
-            # 1. Zpracování kategorií (Hierarchicky)
+            # Dodavatel a výrobce
+            supplier_val = get_val(row, 'supplier')
+            manufacturer_val = get_val(row, 'manufacturer')
+            supplier = await get_or_create_supplier(db, company_id, str(supplier_val)) if supplier_val else None
+            manufacturer = await get_or_create_manufacturer(db, company_id, str(manufacturer_val)) if manufacturer_val else None
+
+            # 1. Zpracování hierarchie kategorií ze sloupců
             categories_to_assign = []
-            if cat_val:
-                # Rozdělit podle nového řádku (pokud je položka ve více stromech)
-                raw_paths = str(cat_val).split('\n')
-                for raw_path in raw_paths:
-                    if not raw_path.strip(): continue
-                    # Zavoláme funkci, která projde/vytvoří strom: "A > B > C"
-                    cat = await resolve_category_path(db, company_id, raw_path)
+            if category_level_indices:
+                # Sestavíme cestu z hodnot buněk na vybraných sloupcích (přeskočíme prázdné)
+                parts = []
+                for col_idx in category_level_indices:
+                    if 0 <= col_idx < len(row):
+                        cell_val = row[col_idx]
+                        if cell_val is not None and str(cell_val).strip():
+                            parts.append(str(cell_val).strip())
+                if parts:
+                    path_str = " > ".join(parts)
+                    cat = await resolve_category_path(db, company_id, path_str)
                     if cat:
                         categories_to_assign.append(cat)
 
@@ -163,20 +203,26 @@ async def import_inventory_from_excel(
             stmt_item = select(InventoryItem).where(
                 InventoryItem.company_id == company_id,
                 InventoryItem.sku == sku
-            )
+            ).options(selectinload(InventoryItem.categories))
             item = (await db.execute(stmt_item)).scalar_one_or_none()
 
             if item:
                 # Update
                 item.name = str(name)
-                if price > 0: item.price = price
-                if description: item.description = description
-                
-                # Přidání nových kategorií (nemusíme mazat staré, jen přidáme nové ze souboru)
+                if price > 0:
+                    item.price = price
+                if description:
+                    item.description = description
+                if supplier:
+                    item.supplier_id = supplier.id
+                if manufacturer:
+                    item.manufacturer_id = manufacturer.id
+
+                # Přidání nových kategorií
                 for cat in categories_to_assign:
                     if cat not in item.categories:
                         item.categories.append(cat)
-                
+
                 stats["updated"] += 1
             else:
                 # Create
@@ -186,12 +232,13 @@ async def import_inventory_from_excel(
                     sku=sku,
                     price=price,
                     description=description,
+                    supplier_id=supplier.id if supplier else None,
+                    manufacturer_id=manufacturer.id if manufacturer else None,
                     is_monitored_for_stock=True,
                     low_stock_threshold=5
                 )
-                # Přiřazení kategorií
                 item.categories = categories_to_assign
-                
+
                 db.add(item)
                 await db.flush()
                 stats["created"] += 1

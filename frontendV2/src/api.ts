@@ -640,3 +640,13 @@ export const updateFleetLog = (cid: number, logId: number, data: any): Promise<V
 
 export const deleteFleetLog = (cid: number, logId: number): Promise<void> => 
     fetchApi(`/plugins/fleet/${cid}/logs/${logId}`, { method: 'DELETE' });
+
+// --- INVENTORY WIPE ---
+export const wipeInventoryItems = (cid: number): Promise<void> =>
+    fetchApi(`/plugins/inventory-wipe/${cid}/items`, { method: 'DELETE' });
+
+export const wipeInventoryCategories = (cid: number): Promise<void> =>
+    fetchApi(`/plugins/inventory-wipe/${cid}/categories`, { method: 'DELETE' });
+
+export const wipeInventoryAll = (cid: number): Promise<void> =>
+    fetchApi(`/plugins/inventory-wipe/${cid}/all`, { method: 'DELETE' });

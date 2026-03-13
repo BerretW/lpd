@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_db
-from app.db.models import InventoryCategory, InventoryItem
+from app.db.models import InventoryCategory, InventoryItem, item_category_association
 from app.schemas.category import CategoryCreateIn, CategoryOut, CategoryUpdateIn
 from app.core.dependencies import require_company_access
 from app.schemas.category import CategoryCreateIn, CategoryOut, CategoryUpdateIn, CategorySimpleOut
@@ -103,8 +103,8 @@ async def delete_category(
     if (await db.execute(stmt_children)).scalar_one_or_none():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot delete category with sub-categories.")
 
-    stmt_items = select(InventoryItem.id).where(InventoryItem.categories_id == category_id).limit(1)
-    if (await db.execute(stmt_items)).scalar_one_or_none():
+    stmt_items = select(item_category_association.c.item_id).where(item_category_association.c.category_id == category_id).limit(1)
+    if (await db.execute(stmt_items)).first():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot delete category that contains inventory items.")
 
     category = (await db.execute(select(InventoryCategory).where(InventoryCategory.id == category_id, InventoryCategory.company_id == company_id))).scalar_one_or_none()
