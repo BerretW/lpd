@@ -15,6 +15,7 @@ import ObjectsPlugin from './components/plugins/ObjectsPlugin';
 const App: React.FC = () => {
     const { isAuthenticated, user, role, companyId, logout } = useAuth();
     const [currentView, setCurrentView] = useState<View>(View.Dashboard);
+    const [pendingWorkOrderId, setPendingWorkOrderId] = useState<number | null>(null);
     const { t } = useI18n();
 
     if (!isAuthenticated || !user || !companyId || !role) {
@@ -39,7 +40,7 @@ const App: React.FC = () => {
             case View.Jobs:
                 // Only Admins and Owners can see the Jobs page.
                 if (isAdmin) {
-                    return <Jobs companyId={companyId} />;
+                    return <Jobs companyId={companyId} initialWorkOrderId={pendingWorkOrderId ?? undefined} onWorkOrderOpened={() => setPendingWorkOrderId(null)} />;
                 }
                 // Redirect non-admin users to the dashboard if they try to access Jobs.
                 return <Dashboard setCurrentView={setCurrentView} companyId={companyId} />;
@@ -50,7 +51,7 @@ const App: React.FC = () => {
             case View.Fleet:
                 return <FleetPlugin companyId={companyId} />;
             case View.Objects:
-                return <ObjectsPlugin companyId={companyId} />;
+                return <ObjectsPlugin companyId={companyId} onOpenWorkOrder={(id: number) => { setPendingWorkOrderId(id); setCurrentView(View.Jobs); }} />;
             case View.Admin:
                 if (isAdmin) {
                     return <Admin companyId={companyId} />;

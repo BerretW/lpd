@@ -4,7 +4,7 @@ import Button from '../common/Button';
 import Modal from '../common/Modal';
 import Icon from '../common/Icon';
 import * as api from '../../api';
-import { InventoryItemOut, ClientOut } from '../../types';
+import { InventoryItemOut, ClientOut, WorkOrderOut } from '../../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1017,6 +1017,80 @@ const NewObjectModal: React.FC<{
     );
 };
 
+// ─── Work Orders Modal ────────────────────────────────────────────────────────
+
+const STATUS_LABEL: Record<string, string> = {
+    new: 'Nová',
+    in_progress: 'Probíhá',
+    completed: 'Dokončena',
+    billed: 'Fakturována',
+};
+
+const STATUS_COLOR: Record<string, string> = {
+    new: 'bg-blue-100 text-blue-800',
+    in_progress: 'bg-orange-100 text-orange-800',
+    completed: 'bg-green-100 text-green-800',
+    billed: 'bg-purple-100 text-purple-800',
+};
+
+const WorkOrdersModal: React.FC<{
+    companyId: number;
+    siteId: number;
+    onClose: () => void;
+    onOpenWorkOrder?: (workOrderId: number) => void;
+}> = ({ companyId, siteId, onClose, onOpenWorkOrder }) => {
+    const [workOrders, setWorkOrders] = useState<WorkOrderOut[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.getWorkOrders(companyId)
+            .then(all => setWorkOrders(all.filter(wo => wo.object_id === siteId)))
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, [companyId, siteId]);
+
+    return (
+        <Modal title="Zakázky objektu" onClose={onClose}>
+            {loading ? (
+                <div className="flex items-center justify-center py-10 text-slate-400">
+                    <Icon name="fa-spinner fa-spin" className="mr-2" />
+                    Načítám zakázky...
+                </div>
+            ) : workOrders.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                    <Icon name="fa-briefcase" className="text-3xl mb-2" />
+                    <p className="text-sm">Žádné zakázky pro tento objekt</p>
+                </div>
+            ) : (
+                <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                    {workOrders.map(wo => (
+                        <button
+                            key={wo.id}
+                            className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3"
+                            onClick={() => { onOpenWorkOrder?.(wo.id); onClose(); }}
+                        >
+                            <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-slate-800 truncate">{wo.name}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                    {wo.tasks.length} {wo.tasks.length === 1 ? 'úkol' : wo.tasks.length < 5 ? 'úkoly' : 'úkolů'}
+                                    {wo.client && <span> · {wo.client.name}</span>}
+                                </p>
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${STATUS_COLOR[wo.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {STATUS_LABEL[wo.status] ?? wo.status}
+                            </span>
+                            <Icon name="fa-chevron-right" className="text-slate-400 text-xs flex-shrink-0" />
+                        </button>
+                    ))}
+                </div>
+            )}
+            <div className="flex justify-end mt-4">
+                <Button variant="secondary" onClick={onClose}>Zavřít</Button>
+            </div>
+        </Modal>
+    );
+};
+
 // ─── Object Detail ────────────────────────────────────────────────────────────
 
 const ObjectDetail: React.FC<{
@@ -1026,11 +1100,13 @@ const ObjectDetail: React.FC<{
     companyId: number;
     onBack: () => void;
     onSiteUpdated: (site: ObjectSite) => void;
-}> = ({ siteId, techTypeDefs, clients, companyId, onBack, onSiteUpdated }) => {
+    onOpenWorkOrder?: (workOrderId: number) => void;
+}> = ({ siteId, techTypeDefs, clients, companyId, onBack, onSiteUpdated, onOpenWorkOrder }) => {
     const [site, setSite] = useState<ObjectSite | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<string>('overview');
     const [editOpen, setEditOpen] = useState(false);
+    const [workOrdersOpen, setWorkOrdersOpen] = useState(false);
 
     const refresh = useCallback(async () => {
         try {
@@ -1105,6 +1181,10 @@ const ObjectDetail: React.FC<{
                     <h1 className="text-2xl font-bold text-slate-800">{site.name}</h1>
                     <p className="text-sm text-slate-500">Karta objektu</p>
                 </div>
+                <Button variant="secondary" onClick={() => setWorkOrdersOpen(true)}>
+                    <Icon name="fa-briefcase" className="mr-2" />
+                    Zakázky
+                </Button>
                 <Button variant="secondary" onClick={() => setEditOpen(true)}>
                     <Icon name="fa-edit" className="mr-2" />
                     Upravit objekt
@@ -1166,6 +1246,14 @@ const ObjectDetail: React.FC<{
                     onClose={() => setEditOpen(false)}
                     onSave={handleEditSave} />
             )}
+            {workOrdersOpen && (
+                <WorkOrdersModal
+                    companyId={companyId}
+                    siteId={site.id}
+                    onClose={() => setWorkOrdersOpen(false)}
+                    onOpenWorkOrder={onOpenWorkOrder}
+                />
+            )}
         </div>
     );
 };
@@ -1174,9 +1262,10 @@ const ObjectDetail: React.FC<{
 
 interface ObjectsPluginProps {
     companyId: number;
+    onOpenWorkOrder?: (workOrderId: number) => void;
 }
 
-const ObjectsPlugin: React.FC<ObjectsPluginProps> = ({ companyId }) => {
+const ObjectsPlugin: React.FC<ObjectsPluginProps> = ({ companyId, onOpenWorkOrder }) => {
     const [sites, setSites] = useState<ObjectSite[]>([]);
     const [techTypeDefs, setTechTypeDefs] = useState<TechTypeDef[]>([]);
     const [clients, setClients] = useState<ClientOut[]>([]);
@@ -1254,6 +1343,7 @@ const ObjectsPlugin: React.FC<ObjectsPluginProps> = ({ companyId }) => {
                     companyId={companyId}
                     onBack={() => setSelectedSiteId(null)}
                     onSiteUpdated={handleSiteUpdated}
+                    onOpenWorkOrder={onOpenWorkOrder}
                 />
             </div>
         );

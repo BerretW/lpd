@@ -20,6 +20,8 @@ import InvoiceConfigModal, { InvoiceConfig } from './InvoiceConfigModal';
 
 interface JobsProps {
   companyId: number;
+  initialWorkOrderId?: number;
+  onWorkOrderOpened?: () => void;
 }
 
 const statusColors: { [key: string]: string } = {
@@ -212,7 +214,7 @@ const TaskItem: React.FC<{
     )
 }
 
-const Jobs: React.FC<JobsProps> = ({ companyId }) => {
+const Jobs: React.FC<JobsProps> = ({ companyId, initialWorkOrderId, onWorkOrderOpened }) => {
   const { role } = useAuth();
   const { t } = useI18n();
   const isAdmin = role === RoleEnum.Admin || role === RoleEnum.Owner;
@@ -283,6 +285,15 @@ const Jobs: React.FC<JobsProps> = ({ companyId }) => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!initialWorkOrderId || loading || workOrders.length === 0) return;
+    const wo = workOrders.find(w => w.id === initialWorkOrderId);
+    if (wo) {
+      setSelectedWorkOrder(wo);
+      onWorkOrderOpened?.();
+    }
+  }, [initialWorkOrderId, loading, workOrders, onWorkOrderOpened]);
   
   const fetchFullWorkOrder = useCallback(async (workOrderId: number) => {
     if (!workOrderId) return;
