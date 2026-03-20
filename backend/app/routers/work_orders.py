@@ -11,6 +11,7 @@ from app.db.models import (
     WorkOrder, Task, TimeLog, UsedInventoryItem, TimeLogEntryType,
     ClientCategoryMargin, InventoryItem, Client, InventoryCategory
 )
+from plugins.objects_management.models import ObjSite
 from app.schemas.work_order import (
     WorkOrderCreateIn, WorkOrderOut, WorkOrderUpdateIn, WorkOrderStatusUpdateIn,
     BillingReportOut
@@ -19,6 +20,55 @@ from app.schemas.shared import BillingReportTimeLogOut, BillingReportUsedItemOut
 from app.core.dependencies import require_company_access, require_admin_access
 
 router = APIRouter(prefix="/companies/{company_id}/work-orders", tags=["work-orders"])
+
+async def _resolve_object_preview(object_id: Optional[int], db: AsyncSession) -> Optional[dict]:
+    """Načte objekt (site) dle ID a vrátí preview dict."""
+    if not object_id:
+        return None
+    obj = (await db.execute(select(ObjSite).where(ObjSite.id == object_id))).scalar_one_or_none()
+    if not obj:
+        return None
+    customer_name = None
+    if obj.customer_id:
+        customer_name = (await db.execute(select(Client.name).where(Client.id == obj.customer_id))).scalar_one_or_none()
+    return {
+        "id": obj.id,
+        "name": obj.name,
+        "address": obj.address,
+        "city": obj.city,
+        "customer_name": customer_name,
+    }
+
+
+async def _wo_to_dict(wo: WorkOrder, db: AsyncSession) -> dict:
+    """Sestaví WorkOrderOut dict včetně object preview."""
+    obj_preview = await _resolve_object_preview(wo.object_id, db)
+    return {
+        "id": wo.id,
+        "company_id": wo.company_id,
+        "name": wo.name,
+        "description": wo.description,
+        "client_id": wo.client_id,
+        "object_id": wo.object_id,
+        "budget_hours": wo.budget_hours,
+        "status": wo.status,
+        "tasks": [{"id": t.id, "name": t.name, "status": t.status} for t in wo.tasks],
+        "client": {
+            "id": wo.client.id,
+            "name": wo.client.name,
+            "email": wo.client.email,
+            "phone": wo.client.phone,
+            "address": wo.client.address,
+            "company_id": wo.client.company_id,
+            "legal_name": getattr(wo.client, "legal_name", None),
+            "contact_person": getattr(wo.client, "contact_person", None),
+            "ico": getattr(wo.client, "ico", None),
+            "dic": getattr(wo.client, "dic", None),
+            "margin_percentage": getattr(wo.client, "margin_percentage", None),
+        } if wo.client else None,
+        "object": obj_preview,
+    }
+
 
 async def get_full_work_order_or_404(company_id: int, work_order_id: int, db: AsyncSession) -> WorkOrder:
     """Vždy načte zakázku se všemi potřebnými vztahy."""
@@ -37,20 +87,21 @@ async def get_full_work_order_or_404(company_id: int, work_order_id: int, db: As
 
 @router.post("", response_model=WorkOrderOut, status_code=status.HTTP_201_CREATED)
 async def create_work_order(
-    company_id: int, 
-    payload: WorkOrderCreateIn, 
-    db: AsyncSession = Depends(get_db), 
+    company_id: int,
+    payload: WorkOrderCreateIn,
+    db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
     wo = WorkOrder(**payload.dict(), company_id=company_id)
     db.add(wo)
     await db.commit()
-    return await get_full_work_order_or_404(company_id, wo.id, db)
+    wo = await get_full_work_order_or_404(company_id, wo.id, db)
+    return await _wo_to_dict(wo, db)
 
 @router.get("", response_model=List[WorkOrderOut])
 async def list_work_orders(
-    company_id: int, 
-    db: AsyncSession = Depends(get_db), 
+    company_id: int,
+    db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
     stmt = (
@@ -58,23 +109,25 @@ async def list_work_orders(
         .where(WorkOrder.company_id == company_id)
         .options(selectinload(WorkOrder.tasks), selectinload(WorkOrder.client))
     )
-    return (await db.execute(stmt)).scalars().all()
+    wos = (await db.execute(stmt)).scalars().all()
+    return [await _wo_to_dict(wo, db) for wo in wos]
 
 @router.get("/{work_order_id}", response_model=WorkOrderOut)
 async def get_work_order(
-    company_id: int, 
-    work_order_id: int, 
-    db: AsyncSession = Depends(get_db), 
+    company_id: int,
+    work_order_id: int,
+    db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
-    return await get_full_work_order_or_404(company_id, work_order_id, db)
+    wo = await get_full_work_order_or_404(company_id, work_order_id, db)
+    return await _wo_to_dict(wo, db)
 
 @router.patch("/{work_order_id}", response_model=WorkOrderOut, summary="Úprava zakázky")
 async def update_work_order(
-    company_id: int, 
-    work_order_id: int, 
-    payload: WorkOrderUpdateIn, 
-    db: AsyncSession = Depends(get_db), 
+    company_id: int,
+    work_order_id: int,
+    payload: WorkOrderUpdateIn,
+    db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
     stmt = select(WorkOrder).where(WorkOrder.id == work_order_id, WorkOrder.company_id == company_id)
@@ -85,7 +138,8 @@ async def update_work_order(
     for key, value in update_data.items():
         setattr(wo, key, value)
     await db.commit()
-    return await get_full_work_order_or_404(company_id, work_order_id, db)
+    wo = await get_full_work_order_or_404(company_id, work_order_id, db)
+    return await _wo_to_dict(wo, db)
 
 @router.post("/{work_order_id}/status", response_model=WorkOrderOut, summary="Změna stavu zakázky")
 async def update_work_order_status(
@@ -101,28 +155,31 @@ async def update_work_order_status(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Work order not found")
     wo.status = payload.status
     await db.commit()
-    return await get_full_work_order_or_404(company_id, work_order_id, db)
+    wo = await get_full_work_order_or_404(company_id, work_order_id, db)
+    return await _wo_to_dict(wo, db)
 
 @router.post("/{work_order_id}/copy", response_model=WorkOrderOut, status_code=status.HTTP_201_CREATED, summary="Kopírování zakázky")
 async def copy_work_order(
-    company_id: int, 
-    work_order_id: int, 
-    db: AsyncSession = Depends(get_db), 
+    company_id: int,
+    work_order_id: int,
+    db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access)
 ):
     original_wo = await get_full_work_order_or_404(company_id, work_order_id, db)
     new_wo = WorkOrder(
-        company_id=original_wo.company_id, 
-        client_id=original_wo.client_id, 
-        name=f"{original_wo.name} (Kopie)", 
-        description=original_wo.description, 
+        company_id=original_wo.company_id,
+        client_id=original_wo.client_id,
+        object_id=original_wo.object_id,
+        name=f"{original_wo.name} (Kopie)",
+        description=original_wo.description,
         status="new"
     )
     new_tasks = [Task(name=task.name, description=task.description, status="todo") for task in original_wo.tasks]
     new_wo.tasks = new_tasks
     db.add(new_wo)
     await db.commit()
-    return await get_full_work_order_or_404(company_id, new_wo.id, db)
+    new_wo = await get_full_work_order_or_404(company_id, new_wo.id, db)
+    return await _wo_to_dict(new_wo, db)
 
 # --- Fakturační report ---
 

@@ -190,15 +190,25 @@ export interface TaskOut {
     used_items: UsedItemOut[];
 }
 
+export interface ObjectSitePreview {
+    id: number;
+    name: string;
+    address?: string;
+    city?: string;
+    customer_name?: string;
+}
+
 export interface WorkOrderOut {
     id: number;
     name: string;
     description?: string;
     client_id?: number;
+    object_id?: number;
     company_id: number;
     status: string;
     tasks: TaskPreviewOut[];
     client?: ClientOut;
+    object?: ObjectSitePreview;
     budget_hours?: number;
     // Added to support history reporting
     serviceReports?: ServiceReport[];
@@ -231,19 +241,14 @@ export interface AuditLogOut {
     inventory_item: UsedItemInventoryPreviewOut | null;
 }
 
-export interface BillingReportOut {
-    work_order_name: string;
-    client_name: string | null;
+export interface ClientBillingReportOut {
+    client_name: string;
     total_hours: number;
     total_price_work: number;
     total_price_inventory: number;
     grand_total: number;
     time_logs: any[];
-    used_items: any[];
-}
-
-export interface ClientBillingReportOut extends Omit<BillingReportOut, 'work_order_name'> {
-    client_name: string;
+    used_items: BillingReportItem[];
 }
 
 export interface ServiceReportDataOut {
@@ -467,7 +472,6 @@ export interface BillingReportItem {
     category_name?: string;
 }
 
-// Upravíme BillingReportOut
 export interface BillingReportOut {
     work_order_name: string;
     client_name: string | null;

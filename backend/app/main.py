@@ -113,6 +113,7 @@ async def lifespan(app: FastAPI):
         _migrations = [
             "ALTER TABLE plugin_obj_tech_fields ADD COLUMN IF NOT EXISTS is_main BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE plugin_obj_tech_elements ADD COLUMN IF NOT EXISTS is_main BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS object_id INTEGER REFERENCES plugin_obj_sites(id) ON DELETE SET NULL",
         ]
         for sql in _migrations:
             try:

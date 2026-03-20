@@ -21,10 +21,20 @@ class TaskPreviewOut(BaseModel):
     status: str
     model_config = ConfigDict(from_attributes=True)
 
+class ObjectSitePreviewOut(BaseModel):
+    id: int
+    name: str
+    address: Optional[str] = None
+    city: Optional[str] = None
+    customer_name: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
 class WorkOrderBase(BaseModel):
     name: str
     description: Optional[str] = None
     client_id: Optional[int] = None
+    object_id: Optional[int] = None
     budget_hours: Optional[float] = None
 
 class WorkOrderCreateIn(WorkOrderBase):
@@ -42,6 +52,7 @@ class WorkOrderOut(WorkOrderBase):
     status: str
     tasks: List[TaskPreviewOut] = []
     client: Optional[ClientOut] = None
+    object: Optional[ObjectSitePreviewOut] = None
     model_config = ConfigDict(from_attributes=True)
 
 class BillingReportOut(BaseModel):

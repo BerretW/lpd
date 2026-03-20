@@ -469,7 +469,7 @@ const Jobs: React.FC<JobsProps> = ({ companyId }) => {
                       {(wos as WorkOrderOut[]).map(wo => (
                            <Card key={wo.id} className="cursor-pointer hover:shadow-lg hover:border-red-500" onClick={() => setSelectedWorkOrder(wo)}>
                                <h3 className="font-bold text-slate-900">{wo.name}</h3>
-                               <p className="text-sm text-slate-600">{wo.client?.name || t('dashboard.clientMissing')}</p>
+                               <p className="text-sm text-slate-600">{wo.object ? `${wo.object.name}${wo.object.city ? ` – ${wo.object.city}` : ''}` : wo.client?.name || t('dashboard.clientMissing')}</p>
                                <p className="text-xs text-slate-500 mt-2">{wo.description?.substring(0, 100)}...</p>
                                <div className="mt-2 pt-2 border-t border-slate-100">
                                    <BudgetDisplay budgetHours={wo.budget_hours} workedHours={workedHoursMap.get(wo.id)} />
@@ -495,7 +495,7 @@ const Jobs: React.FC<JobsProps> = ({ companyId }) => {
             <div className="flex justify-between items-start">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-800">{fullSelectedWO.name}</h1>
-                    <p className="text-slate-600">Pro: {fullSelectedWO.client?.name || t('dashboard.clientMissing')}</p>
+                    <p className="text-slate-600">Pro: {fullSelectedWO.object ? `${fullSelectedWO.object.name}${fullSelectedWO.object.city ? ` – ${fullSelectedWO.object.city}` : ''}${fullSelectedWO.object.customer_name ? ` (${fullSelectedWO.object.customer_name})` : ''}` : fullSelectedWO.client?.name || t('dashboard.clientMissing')}</p>
                     <p className="text-sm text-slate-500 mt-2">{fullSelectedWO.description}</p>
                     <BudgetDisplay budgetHours={fullSelectedWO.budget_hours} workedHours={detailWorkedHours} className="max-w-sm my-4" />
                 </div>

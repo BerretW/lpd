@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { WorkOrder, Client } from '../types';
+import { WorkOrder } from '../types';
+import { ObjectSite } from './plugins/ObjectsPlugin';
 import Input from './common/Input';
 import Button from './common/Button';
 import * as api from '../api';
@@ -14,16 +15,16 @@ interface JobFormProps {
 
 const JobForm: React.FC<JobFormProps> = ({ onSave, onCancel, companyId, workOrder }) => {
     const [name, setName] = useState(workOrder?.name || '');
-    const [clientId, setClientId] = useState<string>(workOrder?.client_id?.toString() || '');
+    const [objectId, setObjectId] = useState<string>(workOrder?.object_id?.toString() || '');
     const [description, setDescription] = useState(workOrder?.description || '');
     const [budgetHours, setBudgetHours] = useState(workOrder?.budget_hours?.toString() || '');
-    const [clients, setClients] = useState<Client[]>([]);
+    const [sites, setSites] = useState<ObjectSite[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        api.getClients(companyId)
-          .then(setClients)
-          .catch(err => setError("Nepodařilo se načíst seznam klientů."));
+        api.getObjectSites(companyId)
+          .then((raw: any[]) => setSites(raw.map(s => ({ id: s.id, name: s.name, address: s.address || '', city: s.city || '', zip: s.zip || '', phone: s.phone || '', customerId: s.customer_id || 0, customerName: s.customer_name || '', contactPerson: s.contact_person || '', contactEmail: s.contact_email || '', technologies: [] }))))
+          .catch(() => setError("Nepodařilo se načíst seznam objektů."));
     }, [companyId]);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -33,15 +34,13 @@ const JobForm: React.FC<JobFormProps> = ({ onSave, onCancel, companyId, workOrde
             const payload = {
                 name,
                 description,
-                client_id: clientId ? parseInt(clientId, 10) : undefined,
+                object_id: objectId ? parseInt(objectId, 10) : null,
                 budget_hours: budgetHours ? parseFloat(budgetHours) : undefined,
             };
             if (workOrder) {
-                // Update logic
                 const updatedWO = await api.updateWorkOrder(companyId, workOrder.id, payload);
                 onSave(updatedWO);
             } else {
-                // Create logic
                 const newWO = await api.createWorkOrder(companyId, payload);
                 onSave(newWO);
             }
@@ -60,7 +59,7 @@ const JobForm: React.FC<JobFormProps> = ({ onSave, onCancel, companyId, workOrde
                     onChange={e => setName(e.target.value)}
                     required
                 />
-                 <Input
+                <Input
                     label="Budget hodin"
                     type="number"
                     step="0.1"
@@ -69,16 +68,20 @@ const JobForm: React.FC<JobFormProps> = ({ onSave, onCancel, companyId, workOrde
                     placeholder="např. 40.5"
                 />
             </div>
-            
+
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Zákazník</label>
-                <select 
-                    value={clientId}
-                    onChange={e => setClientId(e.target.value)}
+                <label className="block text-sm font-medium text-slate-700 mb-1">Objekt</label>
+                <select
+                    value={objectId}
+                    onChange={e => setObjectId(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                 >
-                    <option value="">-- Bez zákazníka --</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    <option value="">-- Bez objektu --</option>
+                    {sites.map(s => (
+                        <option key={s.id} value={s.id}>
+                            {s.name}{s.city ? ` – ${s.city}` : ''}{s.customerName ? ` (${s.customerName})` : ''}
+                        </option>
+                    ))}
                 </select>
             </div>
 
