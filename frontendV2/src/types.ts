@@ -16,7 +16,8 @@ export enum View {
     PickingOrders = 'PickingOrders',
     Admin = 'Admin',
     Planning = 'Planning',
-    Fleet = 'Fleet', // <--- PŘIDAT TOTO
+    Fleet = 'Fleet',
+    Objects = 'Objects',
 }
 
 export enum WorkTypeName {

@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.core.config import settings
@@ -23,6 +23,7 @@ from plugins import attendance_export  # Import pluginu pro export docházky (p�
 from plugins import inventory_import  # Import pluginu pro import skladu (příklad)  
 from plugins import fleet_management
 from plugins import inventory_wipe
+from plugins import objects_management
 
 # Importy všech API routerů
 from app.routers import (
@@ -108,7 +109,17 @@ async def lifespan(app: FastAPI):
     # Automatické vytvoření tabulek v DB
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+        # Přidání sloupců, která create_all nepřidá do existujících tabulek
+        _migrations = [
+            "ALTER TABLE plugin_obj_tech_fields ADD COLUMN IF NOT EXISTS is_main BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE plugin_obj_tech_elements ADD COLUMN IF NOT EXISTS is_main BOOLEAN NOT NULL DEFAULT FALSE",
+        ]
+        for sql in _migrations:
+            try:
+                await conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"Migration skipped: {e}")
+
     # Bootstrap výchozího uživatele
     await create_default_user()
     
@@ -126,6 +137,7 @@ async def lifespan(app: FastAPI):
     pm.register_plugin(inventory_import)  # Registrace pluginu pro import skladu (příklad)
     pm.register_plugin(fleet_management)
     pm.register_plugin(inventory_wipe)
+    pm.register_plugin(objects_management)
     
     # Spuštění staré logiky triggerů na pozadí
     asyncio.create_task(periodic_trigger_check())

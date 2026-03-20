@@ -11,6 +11,7 @@ import { useAuth } from './AuthContext';
 import { useI18n } from './I18nContext';
 import PickingOrders from './components/PickingOrders';
 import FleetPlugin from './components/plugins/FleetPlugin';
+import ObjectsPlugin from './components/plugins/ObjectsPlugin';
 const App: React.FC = () => {
     const { isAuthenticated, user, role, companyId, logout } = useAuth();
     const [currentView, setCurrentView] = useState<View>(View.Dashboard);
@@ -48,6 +49,8 @@ const App: React.FC = () => {
                 return <PickingOrders companyId={companyId} />;
             case View.Fleet:
                 return <FleetPlugin companyId={companyId} />;
+            case View.Objects:
+                return <ObjectsPlugin companyId={companyId} />;
             case View.Admin:
                 if (isAdmin) {
                     return <Admin companyId={companyId} />;

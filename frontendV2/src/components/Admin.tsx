@@ -17,8 +17,9 @@ import TriggerManager from './TriggerManager';
 import BackupPlugin from './plugins/BackupPlugin';
 import InventoryWipePlugin from './plugins/InventoryWipePlugin';
 import PohodaSettingsForm from './PohodaSettingsForm'; // NOVÝ IMPORT
+import ObjectsAdminPlugin from './plugins/ObjectsAdminPlugin';
 
-type AdminView = 'clients' | 'members' | 'rates' | 'settings' | 'attendance' | 'smtp' | 'triggers' | 'pohoda';
+type AdminView = 'clients' | 'members' | 'rates' | 'settings' | 'attendance' | 'smtp' | 'triggers' | 'pohoda' | 'objects';
 
 interface AdminProps {
     companyId: number;
@@ -147,6 +148,7 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                 <button onClick={() => setView('smtp')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'smtp' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>SMTP</button>
                 <button onClick={() => setView('triggers')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'triggers' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Notifikace</button>
                 <button onClick={() => setView('pohoda')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'pohoda' ? 'bg-orange-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Pohoda</button>
+                <button onClick={() => setView('objects')} className={`w-full p-2 rounded-md font-semibold text-sm transition-colors ${view === 'objects' ? 'bg-red-600 text-white shadow' : 'text-slate-600 hover:bg-slate-300'}`}>Objekty</button>
                 <button onClick={() => setView('plugins')} className="...">Pluginy</button>
             </nav>
 
@@ -161,6 +163,7 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                         {view === 'smtp' && 'Nastavení odchozí pošty (SMTP)'}
                         {view === 'triggers' && 'Nastavení automatických notifikací'}
                         {view === 'pohoda' && 'Integrace Pohoda (mServer)'}
+                        {view === 'objects' && 'Technologie objektů'}
                     </h2>
                     {view === 'clients' && (
                         <div className="flex gap-2">
@@ -235,6 +238,9 @@ const Admin: React.FC<AdminProps> = ({ companyId }) => {
                 )}
                 {view === 'pohoda' && (
                     <PohodaSettingsForm companyId={companyId} />
+                )}
+                {view === 'objects' && (
+                    <ObjectsAdminPlugin companyId={companyId} />
                 )}
 {view === 'plugins' && (
     <div>
