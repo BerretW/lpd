@@ -3,9 +3,10 @@ import Button from './common/Button';
 
 interface SignaturePadProps {
   onSave: (signature: string | null) => void;
+  initialValue?: string | null;
 }
 
-const SignaturePad: React.FC<SignaturePadProps> = ({ onSave }) => {
+const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, initialValue }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSigned, setHasSigned] = useState(false);
@@ -26,7 +27,16 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ onSave }) => {
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
       }
+      if (initialValue) {
+          const img = new Image();
+          img.onload = () => {
+              ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          };
+          img.src = initialValue;
+          setHasSigned(true);
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getCoords = (e: React.MouseEvent | React.TouchEvent) => {

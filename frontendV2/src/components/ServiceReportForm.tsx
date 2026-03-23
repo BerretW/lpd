@@ -220,11 +220,11 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <h3 className="font-medium mb-2 text-slate-800">Podpis technika</h3>
-                    <SignaturePad onSave={setTechnicianSignature} />
+                    <SignaturePad onSave={setTechnicianSignature} initialValue={technicianSignature} />
                 </div>
                 <div>
                     <h3 className="font-medium mb-2 text-slate-800">Podpis zákazníka</h3>
-                    <SignaturePad onSave={setCustomerSignature} />
+                    <SignaturePad onSave={setCustomerSignature} initialValue={customerSignature} />
                 </div>
             </div>
             
