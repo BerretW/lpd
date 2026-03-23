@@ -255,7 +255,28 @@ export interface ServiceReportDataOut {
     work_order: WorkOrderOut;
     task: TaskOut;
 }
-
+export interface ServiceReportOut {
+    id: number;
+    company_id: number;
+    work_order_id: number;
+    task_id: number;
+    date: string;
+    technicians: string[];
+    arrival_time: string | null;
+    work_hours: number;
+    km_driven: number;
+    work_description: string;
+    is_warranty_repair: boolean;
+    materials_used: { id: string; name: string; quantity: number }[];
+    notes: string | null;
+    work_type: string[];
+    photos: { id: string; dataUrl: string }[];
+    technician_signature: string | null;
+    customer_signature: string | null;
+    created_at: string;
+    task_name: string | null;
+    work_order_name: string | null;
+}
 export interface SmtpSettingsOut {
     id: number;
     is_enabled: boolean;

@@ -30,7 +30,7 @@ from app.routers import (
     auth, users, companies, clients, invites, members, inventory, categories,
     work_types, work_orders, tasks, time_logs, audit_logs,
     locations, inventory_movements, smtp, triggers, internal, picking_orders,
-    partners, pohoda
+    partners, pohoda, service_reports
 )
 from app.services.trigger_service import check_all_triggers
 
@@ -114,6 +114,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE plugin_obj_tech_fields ADD COLUMN IF NOT EXISTS is_main BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE plugin_obj_tech_elements ADD COLUMN IF NOT EXISTS is_main BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS object_id INTEGER REFERENCES plugin_obj_sites(id) ON DELETE SET NULL",
+            # service_reports tabulka se vytvoří přes create_all, tady jen pro jistotu indexy
         ]
         for sql in _migrations:
             try:
@@ -190,6 +191,7 @@ app.include_router(internal.router)
 app.include_router(picking_orders.router)
 app.include_router(partners.router)
 app.include_router(pohoda.router)
+app.include_router(service_reports.router)
 
 @app.get("/healthz")
 async def health():

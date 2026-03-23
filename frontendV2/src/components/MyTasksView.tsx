@@ -179,7 +179,7 @@ const MyTasksView: React.FC<MyTasksViewProps> = ({ companyId, userId }) => {
         setModalInfo({ type: 'SERVICE_REPORT', data: taskData, isFetching: true, totalHours: null, timeLogs: null });
     };
     
-    const handleSaveReport = (report: ServiceReport) => {
+  const handleSaveReport = (report: ServiceReport, _saved: import('../types').ServiceReportOut) => {
         if (modalInfo.type === 'SERVICE_REPORT') {
             setReportToPrint({ report, data: modalInfo.data });
             handleCloseModal();

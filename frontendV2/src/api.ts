@@ -2,9 +2,9 @@
 import { LoginIn } from './schemas/auth';
 import { 
     Client, WorkOrder, Task, TimeLog, InventoryItem, WorkType, RoleEnum, 
-    TaskOut, WorkOrderOut, TimeLogOut, MemberOut, ClientOut, InventoryItemOut, WorkTypeOut, 
-    AuditLogOut, TimeLogStatus, CompanyOut, TimeLogEntryType, BillingReportOut, 
-    ServiceReportDataOut, ClientBillingReportOut, CategoryOut, LocationOut, 
+ TaskOut, WorkOrderOut, TimeLogOut, MemberOut, ClientOut, InventoryItemOut, WorkTypeOut,
+    AuditLogOut, TimeLogStatus, CompanyOut, TimeLogEntryType, BillingReportOut,
+    ServiceReportDataOut, ServiceReportOut, ClientBillingReportOut, CategoryOut, LocationOut,
     SmtpSettingsOut, TriggerOut, PickingOrderOut, PickingOrderStatus, PickingOrderCreateIn,
     PohodaSettingsIn, VehicleOut, VehicleLogOut, VehicleAlertOut
 } from './types';
@@ -363,7 +363,16 @@ export const getServiceReportData = (cid: number, lid: number): Promise<ServiceR
     if (USE_MOCKS) return Promise.resolve({ work_order: mockStore.workOrders[0], task: mockStore.workOrders[0].tasks[0] } as any);
     return fetchApi(`/companies/${cid}/time-logs/${lid}/service-report-data`);
 };
+export const createServiceReport = (cid: number, data: any): Promise<ServiceReportOut> =>
+    fetchApi(`/companies/${cid}/service-reports`, { method: 'POST', body: JSON.stringify(data) });
 
+export const getServiceReports = (cid: number, params?: { task_id?: number; work_order_id?: number; object_id?: number }): Promise<ServiceReportOut[]> => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])).toString() : '';
+    return fetchApi(`/companies/${cid}/service-reports${qs}`);
+};
+
+export const deleteServiceReport = (cid: number, id: number): Promise<void> =>
+    fetchApi(`/companies/${cid}/service-reports/${id}`, { method: 'DELETE' });
 // Fallbacks pro nepoužité ale exportované metody
 export const updateWorkOrder = (cid: number, id: number, data: any) => USE_MOCKS ? Promise.resolve(data) : fetchApi(`/companies/${cid}/work-orders/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 export const updateTask = (cid: number, wid: number, id: number, data: any) => USE_MOCKS ? Promise.resolve(data) : fetchApi(`/companies/${cid}/work-orders/${wid}/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data) });

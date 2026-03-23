@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WorkOrderOut, TaskOut, TimeLogOut, ServiceReport, Photo, InventoryItem, WorkTypeName, RoleEnum, LocationOut } from '../types';
+import { WorkOrderOut, TaskOut, TimeLogOut, ServiceReport, ServiceReportOut, Photo, InventoryItem, WorkTypeName, RoleEnum, LocationOut } from '../types';
 import Input from './common/Input';
 import Button from './common/Button';
 import Icon from './common/Icon';
@@ -15,13 +15,15 @@ interface ServiceReportFormProps {
     task: TaskOut;
     totalHours?: number;
     timeLogs?: TimeLogOut[] | null;
-    onSave: (report: ServiceReport) => void;
+    onSave: (report: ServiceReport, saved: ServiceReportOut) => void;
 }
 
 const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, totalHours, timeLogs, onSave }) => {
     const { user, companyId, role } = useAuth();
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
     const [accessibleLocations, setAccessibleLocations] = useState<LocationOut[]>([]);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const isAdmin = role === RoleEnum.Admin || role === RoleEnum.Owner;
     
     // Form state
@@ -86,8 +88,10 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
         setIsMaterialSelectorOpen(false);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setSaving(true);
+        setSaveError(null);
 
         const report: ServiceReport = {
             id: `report-${Date.now()}`,
@@ -109,7 +113,30 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
             timeLogs: timeLogs || [],
         };
 
-        onSave(report);
+       try {
+            const saved = await api.createServiceReport(companyId!, {
+                work_order_id: workOrder.id,
+                task_id: task.id,
+                date,
+                technicians,
+                arrival_time: arrivalTime || null,
+                work_hours: workHours,
+                km_driven: kmDriven,
+                work_description: workDescription,
+                is_warranty_repair: isWarrantyRepair,
+                materials_used: materialsUsed,
+                notes: notes || null,
+                work_type: workType,
+                photos,
+                technician_signature: technicianSignature,
+                customer_signature: customerSignature,
+            });
+            onSave(report, saved);
+        } catch (err) {
+            setSaveError(err instanceof Error ? err.message : 'Nepodařilo se uložit servisní list.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     const workTypeTranslations: Record<WorkTypeName, string> = {
@@ -197,9 +224,11 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
                 </div>
             </div>
             
+            {saveError && <p className="text-sm text-red-600">{saveError}</p>}
             <div className="flex justify-end pt-4">
-                <Button type="submit">
-                    <Icon name="fa-save" className="mr-2"/> Uložit a vygenerovat list
+                <Button type="submit" disabled={saving}>
+                    <Icon name={saving ? "fa-spinner fa-spin" : "fa-save"} className="mr-2"/>
+                    {saving ? 'Ukládám...' : 'Uložit a vygenerovat list'}
                 </Button>
             </div>
 

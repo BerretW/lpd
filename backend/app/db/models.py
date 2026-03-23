@@ -305,6 +305,30 @@ class Task(Base):
     time_logs: Mapped[list["TimeLog"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     used_items: Mapped[list["UsedInventoryItem"]] = relationship(back_populates="task", cascade="all, delete-orphan")
 
+class ServiceReport(Base):
+    __tablename__ = "service_reports"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    work_order_id: Mapped[int] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    date: Mapped[date] = mapped_column(Date)
+    technicians: Mapped[list] = mapped_column(JSON, default=list)
+    arrival_time: Mapped[Optional[str]] = mapped_column(String(10))
+    work_hours: Mapped[float] = mapped_column(Float, default=0)
+    km_driven: Mapped[int] = mapped_column(Integer, default=0)
+    work_description: Mapped[str] = mapped_column(Text)
+    is_warranty_repair: Mapped[bool] = mapped_column(Boolean, default=False)
+    materials_used: Mapped[list] = mapped_column(JSON, default=list)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    work_type: Mapped[list] = mapped_column(JSON, default=list)
+    photos: Mapped[list] = mapped_column(JSON, default=list)
+    technician_signature: Mapped[Optional[str]] = mapped_column(Text)
+    customer_signature: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
+    work_order: Mapped["WorkOrder"] = relationship()
+    task: Mapped["Task"] = relationship()
+
+
 class TimeLog(Base):
     __tablename__ = "time_logs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

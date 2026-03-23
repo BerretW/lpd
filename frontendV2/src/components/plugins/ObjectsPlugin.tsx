@@ -4,7 +4,7 @@ import Button from '../common/Button';
 import Modal from '../common/Modal';
 import Icon from '../common/Icon';
 import * as api from '../../api';
-import { InventoryItemOut, ClientOut, WorkOrderOut } from '../../types';
+import { InventoryItemOut, ClientOut, WorkOrderOut, ServiceReportOut } from '../../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,11 +85,6 @@ export interface TechInstance {
     elements: TechElement[];
 }
 
-export interface ClientOut {
-    id: number;
-    name: string;
-}
-
 export interface ObjectSite {
     id: number;
     name: string;
@@ -161,9 +156,8 @@ export function transformSite(raw: any): ObjectSite {
     };
 }
 
-// ─── DEPRECATED mock tech type definitions (kept for reference, not used) ─────
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _MOCK_TECH_TYPES_UNUSED: TechTypeDef[] = [
+const _MOCK_TECH_TYPES_UNUSED: any[] = [
     {
         id: 1, name: 'CCTV', color: 'bg-blue-600',
         fields: [
@@ -261,7 +255,8 @@ const _MOCK_TECH_TYPES_UNUSED: TechTypeDef[] = [
     },
 ];
 
-const MOCK_OBJECTS_UNUSED: ObjectSite[] = [
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const MOCK_OBJECTS_UNUSED: any[] = [
     {
         id: 1, name: 'ČSOB - Hroznova',
         address: 'Hroznova 13', city: 'České Budějovice', zip: '370 01',
@@ -676,12 +671,11 @@ const OverviewTable: React.FC<{ obj: ObjectSite; techTypeDefs: TechTypeDef[] }> 
                 </tbody>
                 <tfoot>
                     <tr className="border-t-2 border-slate-200 bg-slate-50">
-                        <td className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase" colSpan={3}>Celkem prvků</td>
+                        <td className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase" colSpan={overviewCols.length + 2}>Celkem prvků</td>
                         <td className="px-3 py-2">
                             <span className="font-bold text-slate-800">{grandTotal}</span>
                             <span className="text-slate-400 text-xs ml-1">ks</span>
                         </td>
-                        <td colSpan={overviewCols.length} />
                     </tr>
                 </tfoot>
             </table>
@@ -1091,6 +1085,67 @@ const WorkOrdersModal: React.FC<{
     );
 };
 
+// ─── Service Sheets Modal ─────────────────────────────────────────────────────
+
+const ServiceSheetsModal: React.FC<{
+    companyId: number;
+    siteId: number;
+    onClose: () => void;
+    onOpenWorkOrder?: (workOrderId: number) => void;
+}> = ({ companyId, siteId, onClose, onOpenWorkOrder }) => {
+    const [reports, setReports] = useState<ServiceReportOut[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.getServiceReports(companyId, { object_id: siteId })
+            .then(setReports)
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, [companyId, siteId]);
+
+    return (
+        <Modal title="Servisní listy objektu" onClose={onClose}>
+            {loading ? (
+                <div className="flex items-center justify-center py-10 text-slate-400">
+                    <Icon name="fa-spinner fa-spin" className="mr-2" />
+                    Načítám servisní listy...
+                </div>
+            ) : reports.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                    <Icon name="fa-file-alt" className="text-3xl mb-2" />
+                    <p className="text-sm">Žádné servisní listy pro tento objekt</p>
+                </div>
+            ) : (
+                <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                    {reports.map(sr => (
+                        <button
+                            key={sr.id}
+                            className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3"
+                            onClick={() => { onOpenWorkOrder?.(sr.work_order_id); onClose(); }}
+                        >
+                            <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-slate-800 truncate">{sr.task_name ?? `Servisní list #${sr.id}`}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                    {new Date(sr.date).toLocaleDateString('cs-CZ')}
+                                    {sr.work_order_name && <span> · {sr.work_order_name}</span>}
+                                    {sr.technicians.length > 0 && <span> · {sr.technicians.join(', ')}</span>}
+                                </p>
+                            </div>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-slate-100 text-slate-600">
+                                {sr.work_hours} h
+                            </span>
+                            <Icon name="fa-chevron-right" className="text-slate-400 text-xs flex-shrink-0" />
+                        </button>
+                    ))}
+                </div>
+            )}
+            <div className="flex justify-end mt-4">
+                <Button variant="secondary" onClick={onClose}>Zavřít</Button>
+            </div>
+        </Modal>
+    );
+};
+
 // ─── Object Detail ────────────────────────────────────────────────────────────
 
 const ObjectDetail: React.FC<{
@@ -1107,6 +1162,7 @@ const ObjectDetail: React.FC<{
     const [activeTab, setActiveTab] = useState<string>('overview');
     const [editOpen, setEditOpen] = useState(false);
     const [workOrdersOpen, setWorkOrdersOpen] = useState(false);
+    const [serviceSheetsOpen, setServiceSheetsOpen] = useState(false);
 
     const refresh = useCallback(async () => {
         try {
@@ -1181,6 +1237,10 @@ const ObjectDetail: React.FC<{
                     <h1 className="text-2xl font-bold text-slate-800">{site.name}</h1>
                     <p className="text-sm text-slate-500">Karta objektu</p>
                 </div>
+                <Button variant="secondary" onClick={() => setServiceSheetsOpen(true)}>
+                    <Icon name="fa-file-alt" className="mr-2" />
+                    Servisní listy
+                </Button>
                 <Button variant="secondary" onClick={() => setWorkOrdersOpen(true)}>
                     <Icon name="fa-briefcase" className="mr-2" />
                     Zakázky
@@ -1251,6 +1311,14 @@ const ObjectDetail: React.FC<{
                     companyId={companyId}
                     siteId={site.id}
                     onClose={() => setWorkOrdersOpen(false)}
+                    onOpenWorkOrder={onOpenWorkOrder}
+                />
+            )}
+            {serviceSheetsOpen && (
+                <ServiceSheetsModal
+                    companyId={companyId}
+                    siteId={site.id}
+                    onClose={() => setServiceSheetsOpen(false)}
                     onOpenWorkOrder={onOpenWorkOrder}
                 />
             )}
