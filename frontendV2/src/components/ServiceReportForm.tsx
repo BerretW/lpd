@@ -43,8 +43,24 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
     const [technicianSignature, setTechnicianSignature] = useState<string | null>(existingReport?.technician_signature ?? null);
     const [customerSignature, setCustomerSignature] = useState<string | null>(existingReport?.customer_signature ?? null);
 
+    const [members, setMembers] = useState<{ id: number; email: string }[]>([]);
+    const [customTechnicianInput, setCustomTechnicianInput] = useState('');
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [isMaterialSelectorOpen, setIsMaterialSelectorOpen] = useState(false);
+
+    const toggleTechnician = (email: string) => {
+        setTechnicians(prev =>
+            prev.includes(email) ? prev.filter(t => t !== email) : [...prev, email]
+        );
+    };
+
+    const addCustomTechnician = () => {
+        const name = customTechnicianInput.trim();
+        if (name && !technicians.includes(name)) {
+            setTechnicians(prev => [...prev, name]);
+        }
+        setCustomTechnicianInput('');
+    };
 
     useEffect(() => {
         // Při editaci se data přednaplní přímo ze stavu – nepřepisujeme
@@ -61,9 +77,12 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
             }
         }
 
-        // Načtení skladu a lokací pro výběr materiálu
+        // Načtení skladu, lokací a členů
         if (companyId) {
             api.getInventoryItems(companyId).then(setInventory);
+            api.getMembers(companyId)
+                .then(data => setMembers(data.map(m => ({ id: m.user.id, email: m.user.email }))))
+                .catch(console.error);
             if (!isAdmin) {
                 api.getMyLocations(companyId)
                     .then(setAccessibleLocations)
@@ -158,7 +177,43 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
                 <Input label="Počet hodin" type="number" step="0.1" value={workHours} onChange={e => setWorkHours(Number(e.target.value))} />
             </div>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <Input label="Jména techniků (oddělit čárkou)" value={technicians.join(', ')} onChange={e => setTechnicians(e.target.value.split(',').map(s => s.trim()))} required />
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Technici</label>
+                    <div className="border border-slate-300 rounded-md p-2 bg-white space-y-1 max-h-32 overflow-y-auto">
+                        {members.map(m => (
+                            <label key={m.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 px-1 py-0.5 rounded">
+                                <input
+                                    type="checkbox"
+                                    checked={technicians.includes(m.email)}
+                                    onChange={() => toggleTechnician(m.email)}
+                                    className="h-4 w-4 rounded border-slate-300 text-red-600"
+                                />
+                                <span className="text-sm text-slate-800">{m.email}</span>
+                            </label>
+                        ))}
+                        {/* Techniky mimo systém */}
+                        {technicians.filter(t => !members.some(m => m.email === t)).map(t => (
+                            <label key={t} className="flex items-center gap-2 px-1 py-0.5">
+                                <input type="checkbox" checked readOnly className="h-4 w-4 rounded border-slate-300 text-red-600" />
+                                <span className="text-sm text-slate-800">{t}</span>
+                                <button type="button" onClick={() => toggleTechnician(t)} className="ml-auto text-xs text-red-500 hover:text-red-700">✕</button>
+                            </label>
+                        ))}
+                    </div>
+                    <div className="flex gap-1 mt-1">
+                        <input
+                            type="text"
+                            value={customTechnicianInput}
+                            onChange={e => setCustomTechnicianInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCustomTechnician())}
+                            placeholder="Přidat externího technika..."
+                            className="flex-grow text-sm p-1.5 border border-slate-300 rounded-md bg-white text-slate-900"
+                        />
+                        <Button type="button" variant="secondary" className="!text-xs !py-1 !px-2" onClick={addCustomTechnician}>
+                            <Icon name="fa-plus" />
+                        </Button>
+                    </div>
+                </div>
                  <Input label="Počet ujetých km" type="number" value={kmDriven} onChange={e => setKmDriven(Number(e.target.value))} />
              </div>
 

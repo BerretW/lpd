@@ -8,47 +8,12 @@ import { useI18n } from '../I18nContext';
 import WorkReport from './WorkReport';
 import ErrorModal from './common/ErrorModal';
 import { ExtensionPoint } from '../lib/PluginSystem';
+import BudgetDisplay from './common/BudgetDisplay';
+
 interface DashboardProps {
     setCurrentView: (view: View) => void;
     companyId: number;
 }
-
-const BudgetDisplay: React.FC<{ budgetHours?: number | null; workedHours?: number | null; className?: string; }> = ({ budgetHours, workedHours, className }) => {
-    const { t } = useI18n();
-
-    if (budgetHours == null || budgetHours <= 0) {
-        return null;
-    }
-    
-    const worked = workedHours ?? 0;
-    const remaining = budgetHours - worked;
-    const percentage = Math.min(100, (worked / budgetHours) * 100);
-
-    let progressColor = 'bg-green-500';
-    if (percentage > 95) {
-        progressColor = 'bg-red-500';
-    } else if (percentage > 75) {
-        progressColor = 'bg-yellow-500';
-    }
-
-    return (
-        <div className={`mt-4 pt-4 border-t border-slate-200 ${className}`}>
-            <div className="flex justify-between items-center text-xs text-slate-600 mb-1">
-                <span><Icon name="fa-clock" className="mr-1" /> {t('dashboard.budget')}</span>
-                <span className="font-semibold">
-                    {t('dashboard.remaining', { remaining: remaining.toFixed(1), budget: budgetHours.toFixed(1) })}
-                </span>
-            </div>
-            <div className="w-full bg-slate-200 rounded-full h-2">
-                <div 
-                    className={`${progressColor} h-2 rounded-full`} 
-                    style={{ width: `${percentage}%` }}
-                    title={t('dashboard.worked', { worked: worked.toFixed(1), percentage: percentage.toFixed(0) })}
-                ></div>
-            </div>
-        </div>
-    );
-};
 
 
 const Dashboard: React.FC<DashboardProps> = ({ setCurrentView, companyId }) => {
@@ -135,7 +100,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentView, companyId }) => {
                                     <h3 className="text-lg font-bold text-slate-900">{wo.name}</h3>
                                     <p className="text-sm text-slate-600 mt-1">{wo.client?.name || t('dashboard.clientMissing')}</p>
                                     <p className="text-sm text-slate-500">{wo.client?.address || ''}</p>
-                                    <BudgetDisplay budgetHours={wo.budget_hours} workedHours={workedHoursMap.get(wo.id)} />
+                                    <BudgetDisplay budgetHours={wo.budget_hours} workedHours={workedHoursMap.get(wo.id)} className="mt-4 pt-4 border-t border-slate-200" />
                                 </Card>
                             )) : (
                                 <p className="text-slate-500">{t('dashboard.noActiveJobs')}</p>
@@ -151,7 +116,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentView, companyId }) => {
                                     <h3 className="text-lg font-bold text-green-700">{wo.name}</h3>
                                     <p className="text-sm text-slate-600 mt-1">{wo.client?.name || t('dashboard.clientMissing')}</p>
                                     <p className="text-sm text-slate-500">{wo.client?.address || ''}</p>
-                                    <BudgetDisplay budgetHours={wo.budget_hours} workedHours={workedHoursMap.get(wo.id)} />
+                                    <BudgetDisplay budgetHours={wo.budget_hours} workedHours={workedHoursMap.get(wo.id)} className="mt-4 pt-4 border-t border-slate-200" />
                                 </Card>
                             )) : (
                                 <p className="text-slate-500">{t('dashboard.noNewJobs')}</p>
