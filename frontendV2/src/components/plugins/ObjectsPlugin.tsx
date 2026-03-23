@@ -5,6 +5,7 @@ import Modal from '../common/Modal';
 import Icon from '../common/Icon';
 import * as api from '../../api';
 import { InventoryItemOut, ClientOut, WorkOrderOut, ServiceReportOut } from '../../types';
+import ServiceReportForm from '../ServiceReportForm';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1095,13 +1096,34 @@ const ServiceSheetsModal: React.FC<{
 }> = ({ companyId, siteId, onClose, onOpenWorkOrder }) => {
     const [reports, setReports] = useState<ServiceReportOut[]>([]);
     const [loading, setLoading] = useState(true);
+    const [editingReport, setEditingReport] = useState<ServiceReportOut | null>(null);
 
-    useEffect(() => {
+    const loadReports = useCallback(() => {
+        setLoading(true);
         api.getServiceReports(companyId, { object_id: siteId })
             .then(setReports)
             .catch(console.error)
             .finally(() => setLoading(false));
     }, [companyId, siteId]);
+
+    useEffect(() => { loadReports(); }, [loadReports]);
+
+    if (editingReport) {
+        return (
+            <Modal
+                title={`Servisní list #${editingReport.id} – ${editingReport.task_name ?? ''}`}
+                onClose={() => setEditingReport(null)}
+            >
+                <ServiceReportForm
+                    existingReport={editingReport}
+                    onSave={(_report, _saved) => {
+                        setEditingReport(null);
+                        loadReports();
+                    }}
+                />
+            </Modal>
+        );
+    }
 
     return (
         <Modal title="Servisní listy objektu" onClose={onClose}>
@@ -1118,24 +1140,37 @@ const ServiceSheetsModal: React.FC<{
             ) : (
                 <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
                     {reports.map(sr => (
-                        <button
-                            key={sr.id}
-                            className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3"
-                            onClick={() => { onOpenWorkOrder?.(sr.work_order_id); onClose(); }}
-                        >
+                        <div key={sr.id} className="flex items-center gap-2 px-4 py-3 hover:bg-slate-50 transition-colors">
                             <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-slate-800 truncate">{sr.task_name ?? `Servisní list #${sr.id}`}</p>
+                                <p className="font-semibold text-slate-800 truncate">
+                                    {sr.task_name ?? `Servisní list #${sr.id}`}
+                                </p>
                                 <p className="text-xs text-slate-400 mt-0.5">
                                     {new Date(sr.date).toLocaleDateString('cs-CZ')}
                                     {sr.work_order_name && <span> · {sr.work_order_name}</span>}
                                     {sr.technicians.length > 0 && <span> · {sr.technicians.join(', ')}</span>}
                                 </p>
                             </div>
-                            <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-slate-100 text-slate-600">
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-slate-100 text-slate-600 flex-shrink-0">
                                 {sr.work_hours} h
                             </span>
-                            <Icon name="fa-chevron-right" className="text-slate-400 text-xs flex-shrink-0" />
-                        </button>
+                            <button
+                                onClick={() => setEditingReport(sr)}
+                                className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex-shrink-0"
+                                title="Upravit servisní list"
+                            >
+                                <Icon name="fa-edit" className="text-sm" />
+                            </button>
+                            {onOpenWorkOrder && (
+                                <button
+                                    onClick={() => { onOpenWorkOrder(sr.work_order_id); onClose(); }}
+                                    className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0"
+                                    title="Otevřít zakázku"
+                                >
+                                    <Icon name="fa-external-link-alt" className="text-sm" />
+                                </button>
+                            )}
+                        </div>
                     ))}
                 </div>
             )}

@@ -11,57 +11,57 @@ import { useAuth } from '../AuthContext';
 
 
 interface ServiceReportFormProps {
-    workOrder: WorkOrderOut;
-    task: TaskOut;
+    workOrder?: WorkOrderOut;
+    task?: TaskOut;
+    existingReport?: ServiceReportOut;
     totalHours?: number;
     timeLogs?: TimeLogOut[] | null;
     onSave: (report: ServiceReport, saved: ServiceReportOut) => void;
 }
 
-const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, totalHours, timeLogs, onSave }) => {
+const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, existingReport, totalHours, timeLogs, onSave }) => {
     const { user, companyId, role } = useAuth();
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
     const [accessibleLocations, setAccessibleLocations] = useState<LocationOut[]>([]);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const isAdmin = role === RoleEnum.Admin || role === RoleEnum.Owner;
-    
-    // Form state
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [arrivalTime, setArrivalTime] = useState('');
-    const [workHours, setWorkHours] = useState(totalHours || 0);
-    const [technicians, setTechnicians] = useState<string[]>([]);
-    const [kmDriven, setKmDriven] = useState(0);
-    const [workDescription, setWorkDescription] = useState(task.description || '');
-    const [isWarrantyRepair, setIsWarrantyRepair] = useState(false);
-    const [materialsUsed, setMaterialsUsed] = useState<{ id: string; name: string; quantity: number }[]>([]);
-    const [notes, setNotes] = useState('');
-    const [workType, setWorkType] = useState<WorkTypeName[]>([]);
-    const [photos, setPhotos] = useState<Photo[]>([]);
-    const [technicianSignature, setTechnicianSignature] = useState<string | null>(null);
-    const [customerSignature, setCustomerSignature] = useState<string | null>(null);
+    const isEditing = !!existingReport;
+
+    // Form state – při editaci se přednaplní z existingReport
+    const [date, setDate] = useState(existingReport ? String(existingReport.date) : new Date().toISOString().split('T')[0]);
+    const [arrivalTime, setArrivalTime] = useState(existingReport?.arrival_time ?? '');
+    const [workHours, setWorkHours] = useState(existingReport?.work_hours ?? (totalHours || 0));
+    const [technicians, setTechnicians] = useState<string[]>(existingReport?.technicians ?? []);
+    const [kmDriven, setKmDriven] = useState(existingReport?.km_driven ?? 0);
+    const [workDescription, setWorkDescription] = useState(existingReport?.work_description ?? task?.description ?? '');
+    const [isWarrantyRepair, setIsWarrantyRepair] = useState(existingReport?.is_warranty_repair ?? false);
+    const [materialsUsed, setMaterialsUsed] = useState<{ id: string; name: string; quantity: number }[]>(existingReport?.materials_used ?? []);
+    const [notes, setNotes] = useState(existingReport?.notes ?? '');
+    const [workType, setWorkType] = useState<WorkTypeName[]>((existingReport?.work_type as WorkTypeName[]) ?? []);
+    const [photos, setPhotos] = useState<Photo[]>(existingReport?.photos ?? []);
+    const [technicianSignature, setTechnicianSignature] = useState<string | null>(existingReport?.technician_signature ?? null);
+    const [customerSignature, setCustomerSignature] = useState<string | null>(existingReport?.customer_signature ?? null);
 
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [isMaterialSelectorOpen, setIsMaterialSelectorOpen] = useState(false);
 
     useEffect(() => {
-        // Pre-populate technicians from task assignee or logged-in user
-        const tech = task.assignee?.email || user?.email;
-        if (tech) {
-            setTechnicians([tech]);
-        }
-        
-        // Pre-populate materials from task used_items
-        if (task.used_items) {
-            const initialMaterials = task.used_items.map(item => ({
-                id: String(item.inventory_item.id),
-                name: item.inventory_item.name,
-                quantity: item.quantity,
-            }));
-            setMaterialsUsed(initialMaterials);
+        // Při editaci se data přednaplní přímo ze stavu – nepřepisujeme
+        if (!isEditing) {
+            const tech = task?.assignee?.email || user?.email;
+            if (tech) setTechnicians([tech]);
+
+            if (task?.used_items) {
+                setMaterialsUsed(task.used_items.map(item => ({
+                    id: String(item.inventory_item.id),
+                    name: item.inventory_item.name,
+                    quantity: item.quantity,
+                })));
+            }
         }
 
-        // Fetch company inventory and user-specific locations for material selector
+        // Načtení skladu a lokací pro výběr materiálu
         if (companyId) {
             api.getInventoryItems(companyId).then(setInventory);
             if (!isAdmin) {
@@ -70,8 +70,7 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
                     .catch(console.error);
             }
         }
-
-    }, [task, user, companyId, isAdmin]);
+    }, [task, user, companyId, isAdmin, isEditing]);
     
     const handlePhotoTaken = (dataUrl: string) => {
         const newPhoto: Photo = { id: `photo-${Date.now()}`, dataUrl };
@@ -93,10 +92,13 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
         setSaving(true);
         setSaveError(null);
 
+        const workOrderId = existingReport?.work_order_id ?? workOrder!.id;
+        const taskId = existingReport?.task_id ?? task!.id;
+
         const report: ServiceReport = {
-            id: `report-${Date.now()}`,
-            jobId: workOrder.id,
-            taskId: task.id,
+            id: existingReport ? String(existingReport.id) : `report-${Date.now()}`,
+            jobId: workOrderId,
+            taskId: taskId,
             date,
             technicians,
             arrivalTime,
@@ -113,24 +115,26 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
             timeLogs: timeLogs || [],
         };
 
-       try {
-            const saved = await api.createServiceReport(companyId!, {
-                work_order_id: workOrder.id,
-                task_id: task.id,
-                date,
-                technicians,
-                arrival_time: arrivalTime || null,
-                work_hours: workHours,
-                km_driven: kmDriven,
-                work_description: workDescription,
-                is_warranty_repair: isWarrantyRepair,
-                materials_used: materialsUsed,
-                notes: notes || null,
-                work_type: workType,
-                photos,
-                technician_signature: technicianSignature,
-                customer_signature: customerSignature,
-            });
+        const payload = {
+            date,
+            technicians,
+            arrival_time: arrivalTime || null,
+            work_hours: workHours,
+            km_driven: kmDriven,
+            work_description: workDescription,
+            is_warranty_repair: isWarrantyRepair,
+            materials_used: materialsUsed,
+            notes: notes || null,
+            work_type: workType,
+            photos,
+            technician_signature: technicianSignature,
+            customer_signature: customerSignature,
+        };
+
+        try {
+            const saved = isEditing
+                ? await api.updateServiceReport(companyId!, existingReport!.id, payload)
+                : await api.createServiceReport(companyId!, { work_order_id: workOrderId, task_id: taskId, ...payload });
             onSave(report, saved);
         } catch (err) {
             setSaveError(err instanceof Error ? err.message : 'Nepodařilo se uložit servisní list.');
@@ -228,7 +232,7 @@ const ServiceReportForm: React.FC<ServiceReportFormProps> = ({ workOrder, task, 
             <div className="flex justify-end pt-4">
                 <Button type="submit" disabled={saving}>
                     <Icon name={saving ? "fa-spinner fa-spin" : "fa-save"} className="mr-2"/>
-                    {saving ? 'Ukládám...' : 'Uložit a vygenerovat list'}
+                    {saving ? 'Ukládám...' : isEditing ? 'Uložit změny' : 'Uložit a vygenerovat list'}
                 </Button>
             </div>
 

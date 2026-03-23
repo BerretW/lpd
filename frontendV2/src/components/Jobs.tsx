@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { WorkOrderOut, TaskOut, MemberOut, RoleEnum, BillingReportOut, WorkOrder, Company } from '../types';
+import { WorkOrderOut, TaskOut, MemberOut, RoleEnum, BillingReportOut, WorkOrder, Company, ServiceReportOut } from '../types';
 import Button from './common/Button';
 import Card from './common/Card';
 import Modal from './common/Modal';
@@ -13,7 +13,8 @@ import UpdateStatusModal from './UpdateStatusModal';
 import PeriodicInvoiceModal from './PeriodicInvoiceModal';
 import ErrorModal from './common/ErrorModal';
 import ConfirmModal from './common/ConfirmModal';
-import TaskForm from './TaskForm'; // Import nového komponentu
+import TaskForm from './TaskForm';
+import ServiceReportForm from './ServiceReportForm';
 import { useAuth } from '../AuthContext';
 import { useI18n } from '../I18nContext';
 import InvoiceConfigModal, { InvoiceConfig } from './InvoiceConfigModal';
@@ -74,8 +75,8 @@ const BudgetDisplay: React.FC<{ budgetHours?: number | null; workedHours?: numbe
 };
 
 // Simplified Task Details component embedded within Jobs.tsx
-const TaskItem: React.FC<{ 
-    task: TaskOut, 
+const TaskItem: React.FC<{
+    task: TaskOut,
     onAssign: (taskId: number, assigneeId: number | null) => void,
     onEdit: (task: TaskOut) => void,
     onStatusChange: (taskId: number, status: string) => void,
@@ -84,7 +85,9 @@ const TaskItem: React.FC<{
     companyId: number,
     refreshWorkOrder: () => void,
     onError: (message: string) => void;
-}> = ({ task, onAssign, onEdit, onStatusChange, members, workOrder, companyId, refreshWorkOrder, onError }) => {
+    serviceReports: ServiceReportOut[];
+    onServiceReportSaved: () => void;
+}> = ({ task, onAssign, onEdit, onStatusChange, members, workOrder, companyId, refreshWorkOrder, onError, serviceReports, onServiceReportSaved }) => {
     // FIX: Destructure `translations` from `useI18n` to correctly access translation objects for iterating over status keys.
     const { t, translations } = useI18n();
     const { role } = useAuth();
@@ -93,6 +96,7 @@ const TaskItem: React.FC<{
     const [isEditingMaterial, setIsEditingMaterial] = useState<any>(null);
     const [isLogMaterialOpen, setIsLogMaterialOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+    const [reportModal, setReportModal] = useState<ServiceReportOut | 'new' | null>(null);
 
     const handleUpdateUsedItem = async (usedItemId: number, newQuantity: number) => {
         try {
@@ -192,6 +196,55 @@ const TaskItem: React.FC<{
                     </ul>
                 ) : <p className="text-xs text-slate-500 italic">{t('jobs.noMaterialUsed')}</p>}
             </div>
+            {/* ── Servisní listy ── */}
+            <div className="mt-4 pt-4 border-t">
+                <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                        <h5 className="font-semibold text-sm text-slate-800">Servisní listy</h5>
+                        {serviceReports.length > 0 ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">
+                                {serviceReports.length}
+                            </span>
+                        ) : (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                                žádný
+                            </span>
+                        )}
+                    </div>
+                    <Button variant="secondary" className="!text-xs !py-1 !px-2" onClick={() => setReportModal('new')}>
+                        <Icon name="fa-plus" className="mr-1" /> Přidat
+                    </Button>
+                </div>
+                {serviceReports.length > 0 && (
+                    <ul className="text-sm space-y-1">
+                        {serviceReports.map(sr => (
+                            <li key={sr.id} className="flex justify-between items-center p-1.5 hover:bg-slate-50 rounded-md group">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <Icon name="fa-file-alt" className="text-slate-400 text-xs flex-shrink-0" />
+                                    <span className="text-slate-700 truncate">
+                                        {new Date(sr.date).toLocaleDateString('cs-CZ')}
+                                    </span>
+                                    <span className="text-slate-400 text-xs whitespace-nowrap">
+                                        {sr.work_hours} h · {sr.technicians.join(', ')}
+                                    </span>
+                                    {sr.work_type.length > 0 && (
+                                        <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 whitespace-nowrap">
+                                            {sr.work_type.join(', ')}
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => setReportModal(sr)}
+                                    className="opacity-0 group-hover:opacity-100 text-xs text-blue-600 hover:underline flex-shrink-0 ml-2 transition-opacity"
+                                >
+                                    <Icon name="fa-edit" className="mr-1" />Upravit
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+
             {isLogMaterialOpen && (
                 <LogMaterialModal
                     companyId={companyId}
@@ -209,6 +262,25 @@ const TaskItem: React.FC<{
                     onConfirm={executeDelete}
                     onCancel={() => setItemToDelete(null)}
                 />
+            )}
+            {reportModal !== null && (
+                <Modal
+                    title={reportModal === 'new'
+                        ? `Nový servisní list – ${task.name}`
+                        : `Upravit servisní list – ${new Date((reportModal as ServiceReportOut).date).toLocaleDateString('cs-CZ')}`
+                    }
+                    onClose={() => setReportModal(null)}
+                >
+                    <ServiceReportForm
+                        workOrder={workOrder}
+                        task={task}
+                        existingReport={reportModal === 'new' ? undefined : reportModal as ServiceReportOut}
+                        onSave={() => {
+                            setReportModal(null);
+                            onServiceReportSaved();
+                        }}
+                    />
+                </Modal>
             )}
         </Card>
     )
@@ -245,6 +317,7 @@ const Jobs: React.FC<JobsProps> = ({ companyId, initialWorkOrderId, onWorkOrderO
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [workOrderForStatus, setWorkOrderForStatus] = useState<WorkOrderOut | null>(null);
   const [isPeriodicInvoiceModalOpen, setIsPeriodicInvoiceModalOpen] = useState(false);
+  const [woServiceReports, setWoServiceReports] = useState<ServiceReportOut[]>([]);
 
   
   const fetchData = useCallback(async () => {
@@ -295,17 +368,26 @@ const Jobs: React.FC<JobsProps> = ({ companyId, initialWorkOrderId, onWorkOrderO
     }
   }, [initialWorkOrderId, loading, workOrders, onWorkOrderOpened]);
   
+  const fetchWoServiceReports = useCallback(async (workOrderId: number) => {
+    try {
+        const reports = await api.getServiceReports(companyId, { work_order_id: workOrderId });
+        setWoServiceReports(reports);
+    } catch { /* tiché selhání – zobrazí se prázdný seznam */ }
+  }, [companyId]);
+
   const fetchFullWorkOrder = useCallback(async (workOrderId: number) => {
     if (!workOrderId) return;
     setDetailWorkedHours(null);
     try {
-        const fullWO = await api.getWorkOrder(companyId, workOrderId);
+        const [fullWO, , reports] = await Promise.all([
+            api.getWorkOrder(companyId, workOrderId),
+            api.getBillingReport(companyId, workOrderId).then(r => setDetailWorkedHours(r.total_hours)).catch(() => {}),
+            api.getServiceReports(companyId, { work_order_id: workOrderId }),
+        ]);
         const taskPromises = fullWO.tasks.map(taskPreview => api.getTask(companyId, workOrderId, taskPreview.id));
         const detailedTasks = await Promise.all(taskPromises);
         setFullSelectedWO({ ...fullWO, tasks: detailedTasks });
-
-        const report = await api.getBillingReport(companyId, workOrderId);
-        setDetailWorkedHours(report.total_hours);
+        setWoServiceReports(reports);
     } catch(err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch job details');
     }
@@ -317,6 +399,7 @@ const Jobs: React.FC<JobsProps> = ({ companyId, initialWorkOrderId, onWorkOrderO
     } else {
       setFullSelectedWO(null);
       setDetailWorkedHours(null);
+      setWoServiceReports([]);
     }
   }, [selectedWorkOrder, fetchFullWorkOrder]);
 
@@ -542,9 +625,9 @@ const Jobs: React.FC<JobsProps> = ({ companyId, initialWorkOrderId, onWorkOrderO
                 )}
                 <div>
                     {fullSelectedWO.tasks.map(task => (
-                        <TaskItem 
-                            key={task.id} 
-                            task={task} 
+                        <TaskItem
+                            key={task.id}
+                            task={task}
                             onAssign={handleAssignTask}
                             onEdit={setEditingTask}
                             onStatusChange={handleUpdateTaskStatus}
@@ -553,6 +636,8 @@ const Jobs: React.FC<JobsProps> = ({ companyId, initialWorkOrderId, onWorkOrderO
                             companyId={companyId}
                             refreshWorkOrder={() => fetchFullWorkOrder(fullSelectedWO.id)}
                             onError={setError}
+                            serviceReports={woServiceReports.filter(sr => sr.task_id === task.id)}
+                            onServiceReportSaved={() => fetchWoServiceReports(fullSelectedWO.id)}
                         />
                     ))}
                 </div>

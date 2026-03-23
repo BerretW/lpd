@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { WorkOrderOut, TaskOut, ServiceReport, TaskTotalHoursOut, TimeLogOut } from '../types';
+import { WorkOrderOut, TaskOut, ServiceReport, TaskTotalHoursOut, TimeLogOut, ServiceReportOut } from '../types';
 import * as api from '../api';
 import Card from './common/Card';
 import Button from './common/Button';
@@ -28,7 +28,8 @@ type ModalInfo =
     | { type: 'MANAGE_MATERIALS', data: TaskWithWorkOrder }
     | { type: 'ADD_FROM_STOCK', data: TaskWithWorkOrder }
     | { type: 'DIRECT_PURCHASE', data: TaskWithWorkOrder }
-    | { type: 'SERVICE_REPORT', data: TaskWithWorkOrder, isFetching: boolean, totalHours: number | null, timeLogs: TimeLogOut[] | null };
+    | { type: 'SERVICE_REPORT_LIST', data: TaskWithWorkOrder, reports: ServiceReportOut[], loading: boolean }
+    | { type: 'SERVICE_REPORT', data: TaskWithWorkOrder, isFetching: boolean, totalHours: number | null, timeLogs: TimeLogOut[] | null, existingReport?: ServiceReportOut };
 
 
 // Copied from Jobs.tsx for status display
@@ -141,7 +142,8 @@ const MyTasksView: React.FC<MyTasksViewProps> = ({ companyId, userId }) => {
     }, [fetchAssignedTasks]);
 
     useEffect(() => {
-        if (modalInfo.type === 'SERVICE_REPORT' && modalInfo.isFetching) {
+        // Fetch hours + timelogs only for NEW report (not when editing existing)
+        if (modalInfo.type === 'SERVICE_REPORT' && modalInfo.isFetching && !modalInfo.existingReport) {
             const fetchReportData = async () => {
                 setError(null);
                 try {
@@ -175,11 +177,29 @@ const MyTasksView: React.FC<MyTasksViewProps> = ({ companyId, userId }) => {
         fetchAssignedTasks(); // Refresh data after changes
     };
     
-    const handleOpenReportModal = (taskData: TaskWithWorkOrder) => {
-        setModalInfo({ type: 'SERVICE_REPORT', data: taskData, isFetching: true, totalHours: null, timeLogs: null });
+    const handleOpenReportList = useCallback(async (taskData: TaskWithWorkOrder) => {
+        setModalInfo({ type: 'SERVICE_REPORT_LIST', data: taskData, reports: [], loading: true });
+        try {
+            const reports = await api.getServiceReports(companyId, { task_id: taskData.task.id });
+            setModalInfo(prev =>
+                prev.type === 'SERVICE_REPORT_LIST' ? { ...prev, reports, loading: false } : prev
+            );
+        } catch {
+            setModalInfo(prev =>
+                prev.type === 'SERVICE_REPORT_LIST' ? { ...prev, loading: false } : prev
+            );
+        }
+    }, [companyId]);
+
+    const handleOpenNewReport = (taskData: TaskWithWorkOrder) => {
+        setModalInfo({ type: 'SERVICE_REPORT', data: taskData, isFetching: true, totalHours: null, timeLogs: null, existingReport: undefined });
     };
-    
-  const handleSaveReport = (report: ServiceReport, _saved: import('../types').ServiceReportOut) => {
+
+    const handleOpenEditReport = (taskData: TaskWithWorkOrder, existing: ServiceReportOut) => {
+        setModalInfo({ type: 'SERVICE_REPORT', data: taskData, isFetching: false, totalHours: null, timeLogs: null, existingReport: existing });
+    };
+
+    const handleSaveReport = (report: ServiceReport, _saved: ServiceReportOut) => {
         if (modalInfo.type === 'SERVICE_REPORT') {
             setReportToPrint({ report, data: modalInfo.data });
             handleCloseModal();
@@ -239,16 +259,62 @@ const MyTasksView: React.FC<MyTasksViewProps> = ({ companyId, userId }) => {
                             onClose={handleCloseModal}
                             onSaveSuccess={handleSaveSuccess}
                             initialMode="direct" />;
+            case 'SERVICE_REPORT_LIST': {
+                const { data, reports, loading: listLoading } = modalInfo;
+                return (
+                    <Modal title={`Servisní listy: ${data.task.name}`} onClose={handleCloseModal}>
+                        <div className="flex justify-between items-center mb-4">
+                            <p className="text-sm text-slate-500">{reports.length} {reports.length === 1 ? 'list' : reports.length < 5 ? 'listy' : 'listů'}</p>
+                            <Button onClick={() => handleOpenNewReport(data)}>
+                                <Icon name="fa-plus" className="mr-2" />
+                                Nový servisní list
+                            </Button>
+                        </div>
+                        {listLoading ? (
+                            <div className="flex items-center justify-center py-10 text-slate-400">
+                                <Icon name="fa-spinner fa-spin" className="mr-2" />
+                                Načítám...
+                            </div>
+                        ) : reports.length === 0 ? (
+                            <div className="text-center py-10 text-slate-400">
+                                <Icon name="fa-file-alt" className="text-3xl mb-2" />
+                                <p className="text-sm">Žádné servisní listy. Vytvořte první.</p>
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                                {reports.map(sr => (
+                                    <button key={sr.id} onClick={() => handleOpenEditReport(data, sr)}
+                                        className="w-full text-left px-3 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3">
+                                        <Icon name="fa-file-alt" className="text-slate-400 text-sm flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-slate-800">{new Date(sr.date).toLocaleDateString('cs-CZ')}</p>
+                                            <p className="text-xs text-slate-400">
+                                                {sr.work_hours} h · {sr.technicians.join(', ')}
+                                                {sr.work_type.length > 0 && <span> · {sr.work_type.join(', ')}</span>}
+                                            </p>
+                                        </div>
+                                        <Icon name="fa-edit" className="text-slate-400 text-xs flex-shrink-0" />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </Modal>
+                );
+            }
             case 'SERVICE_REPORT':
                 return (
-                    <Modal title={`Servisní list pro: ${modalInfo.data.task.name}`} onClose={handleCloseModal}>
+                    <Modal title={modalInfo.existingReport
+                        ? `Upravit servisní list – ${modalInfo.data.task.name}`
+                        : `Nový servisní list – ${modalInfo.data.task.name}`
+                    } onClose={handleCloseModal}>
                         {modalInfo.isFetching && <p>Načítání dat pro servisní list...</p>}
                         <ErrorMessage message={!modalInfo.isFetching ? error : null} />
-                        {!modalInfo.isFetching && modalInfo.totalHours !== null && modalInfo.timeLogs !== null && (
+                        {!modalInfo.isFetching && (modalInfo.existingReport || (modalInfo.totalHours !== null && modalInfo.timeLogs !== null)) && (
                             <ServiceReportForm
                                 workOrder={modalInfo.data.workOrder}
                                 task={modalInfo.data.task}
-                                totalHours={modalInfo.totalHours}
+                                existingReport={modalInfo.existingReport}
+                                totalHours={modalInfo.totalHours ?? undefined}
                                 timeLogs={modalInfo.timeLogs}
                                 onSave={handleSaveReport}
                             />
@@ -310,7 +376,7 @@ const MyTasksView: React.FC<MyTasksViewProps> = ({ companyId, userId }) => {
                                         <Button onClick={() => setModalInfo({ type: 'DIRECT_PURCHASE', data: { task, workOrder } })} variant="secondary" className="!text-xs !py-1 !px-2" title="Přímý nákup">
                                             <Icon name="fa-shopping-cart" className="mr-1" /> Nákup
                                         </Button>
-                                        <Button onClick={() => handleOpenReportModal({ task, workOrder })} variant="secondary">
+                                        <Button onClick={() => handleOpenReportList({ task, workOrder })} variant="secondary">
                                             <Icon name="fa-file-alt" className="mr-2" />
                                             Servisní list
                                         </Button>

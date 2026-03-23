@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.database import get_db
 from app.db.models import ServiceReport, WorkOrder, Task
-from app.schemas.service_report import ServiceReportCreateIn, ServiceReportOut
+from app.schemas.service_report import ServiceReportCreateIn, ServiceReportUpdateIn, ServiceReportOut
 from app.core.dependencies import require_company_access
 
 router = APIRouter(prefix="/companies/{company_id}/service-reports", tags=["service-reports"])
@@ -111,6 +111,44 @@ async def get_service_report(
     sr = (await db.execute(stmt)).scalar_one_or_none()
     if not sr:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Service report not found.")
+    return _enrich(sr)
+
+
+@router.put("/{report_id}", response_model=ServiceReportOut)
+async def update_service_report(
+    company_id: int,
+    report_id: int,
+    payload: ServiceReportUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access),
+):
+    sr = await db.get(ServiceReport, report_id)
+    if not sr or sr.company_id != company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Service report not found.")
+
+    sr.date = payload.date
+    sr.technicians = payload.technicians
+    sr.arrival_time = payload.arrival_time
+    sr.work_hours = payload.work_hours
+    sr.km_driven = payload.km_driven
+    sr.work_description = payload.work_description
+    sr.is_warranty_repair = payload.is_warranty_repair
+    sr.materials_used = payload.materials_used
+    sr.notes = payload.notes
+    sr.work_type = payload.work_type
+    sr.photos = payload.photos
+    sr.technician_signature = payload.technician_signature
+    sr.customer_signature = payload.customer_signature
+
+    await db.commit()
+    await db.refresh(sr)
+
+    stmt = (
+        select(ServiceReport)
+        .where(ServiceReport.id == sr.id)
+        .options(selectinload(ServiceReport.task), selectinload(ServiceReport.work_order))
+    )
+    sr = (await db.execute(stmt)).scalar_one()
     return _enrich(sr)
 
 

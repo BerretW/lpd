@@ -371,6 +371,12 @@ export const getServiceReports = (cid: number, params?: { task_id?: number; work
     return fetchApi(`/companies/${cid}/service-reports${qs}`);
 };
 
+export const getServiceReport = (cid: number, id: number): Promise<ServiceReportOut> =>
+    fetchApi(`/companies/${cid}/service-reports/${id}`);
+
+export const updateServiceReport = (cid: number, id: number, data: any): Promise<ServiceReportOut> =>
+    fetchApi(`/companies/${cid}/service-reports/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
 export const deleteServiceReport = (cid: number, id: number): Promise<void> =>
     fetchApi(`/companies/${cid}/service-reports/${id}`, { method: 'DELETE' });
 // Fallbacks pro nepoužité ale exportované metody

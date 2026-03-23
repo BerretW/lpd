@@ -3,6 +3,22 @@ from typing import Optional, List
 from datetime import datetime, date
 
 
+class ServiceReportUpdateIn(BaseModel):
+    date: date
+    technicians: List[str] = []
+    arrival_time: Optional[str] = None
+    work_hours: float = 0
+    km_driven: int = 0
+    work_description: str
+    is_warranty_repair: bool = False
+    materials_used: List[dict] = []
+    notes: Optional[str] = None
+    work_type: List[str] = []
+    photos: List[dict] = []
+    technician_signature: Optional[str] = None
+    customer_signature: Optional[str] = None
+
+
 class ServiceReportCreateIn(BaseModel):
     work_order_id: int
     task_id: int
