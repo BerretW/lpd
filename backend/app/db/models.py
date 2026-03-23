@@ -159,9 +159,9 @@ class InventoryItem(Base):
     retail_price: Mapped[Optional[float]] = mapped_column(Float)
     vat_rate: Mapped[Optional[float]] = mapped_column(Float)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    is_monitored_for_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
+    is_monitored_for_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", index=True)
     low_stock_threshold: Mapped[Optional[int]] = mapped_column(Integer)
-    low_stock_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    low_stock_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc, onupdate=now_utc)
     
@@ -287,7 +287,7 @@ class WorkOrder(Base):
     status: Mapped[str] = mapped_column(String(50), default="new", index=True)
     budget_hours: Mapped[Optional[float]] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=now_utc)
-    budget_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    budget_alert_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     tasks: Mapped[list["Task"]] = relationship(back_populates="work_order", cascade="all, delete-orphan")
     client: Mapped["Client"] = relationship()
 

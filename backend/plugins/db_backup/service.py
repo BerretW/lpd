@@ -18,24 +18,24 @@ def get_db_credentials():
     Načte údaje dynamicky z Connection Stringu aplikace (settings.DATABASE_URL).
     """
     url = settings.DATABASE_URL
-    # Ošetření prefixů jako mysql+asyncmy://
+    # Ošetření prefixů jako postgresql+asyncpg://
     if "://" not in url:
         raise ValueError("Invalid DATABASE_URL format")
-        
+
     parsed = urlparse(url)
-    
+
     return {
         "host": parsed.hostname,
-        "port": str(parsed.port) if parsed.port else "3306",
+        "port": str(parsed.port) if parsed.port else "5432",
         "user": parsed.username,
         "password": unquote(parsed.password) if parsed.password else "",
         "db": parsed.path.lstrip('/')
     }
 
 async def perform_backup():
-    """Fyzicky provede zálohu pomocí mysqldump"""
+    """Fyzicky provede zálohu pomocí pg_dump"""
     ensure_backup_dir()
-    
+
     try:
         creds = get_db_credentials()
     except Exception as e:
@@ -44,47 +44,29 @@ async def perform_backup():
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"{BACKUP_DIR}/backup_{timestamp}.sql"
-    
+
     # Nastavení hesla přes ENV proměnnou (bezpečnější než v příkazu)
     env = os.environ.copy()
-    env["MYSQL_PWD"] = creds["password"]
-    
+    env["PGPASSWORD"] = creds["password"]
+
     cmd = [
-        "mysqldump",
+        "pg_dump",
         "-h", creds["host"],
-        "-P", creds["port"],
-        "-u", creds["user"],
-        # Parametr pro kompatibilitu s MySQL 8 (pokud server používá nové statistiky)
-        # Pokud by to házelo chybu "unknown variable column-statistics", tento řádek smažte.
-        "--column-statistics=0", 
-        creds["db"],
-        f"--result-file={filename}"
+        "-p", creds["port"],
+        "-U", creds["user"],
+        "-d", creds["db"],
+        "-f", filename,
+        "--no-password"
     ]
-    
+
     try:
-        # capture_output=True nám umožní přečíst chybovou hlášku
-        result = subprocess.run(cmd, env=env, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, env=env, check=True, capture_output=True, text=True)
         logger.info(f"Backup created: {filename}")
         await cleanup_old_backups()
         return filename
     except subprocess.CalledProcessError as e:
-        # Tady vypíšeme skutečnou chybu z databáze
         error_msg = e.stderr or str(e)
         logger.error(f"Backup failed. Error details: {error_msg}")
-        
-        # Pokud selže --column-statistics=0 (např. starší klient), zkusíme to bez něj
-        if "unknown variable" in error_msg.lower() or "column-statistics" in error_msg.lower():
-            logger.warning("Retrying backup without --column-statistics=0")
-            cmd.remove("--column-statistics=0")
-            try:
-                subprocess.run(cmd, env=env, check=True, capture_output=True, text=True)
-                logger.info(f"Backup created (retry): {filename}")
-                await cleanup_old_backups()
-                return filename
-            except subprocess.CalledProcessError as e2:
-                logger.error(f"Retry failed: {e2.stderr}")
-                raise ValueError(f"Záloha selhala: {e2.stderr}")
-        
         raise ValueError(f"Záloha selhala: {error_msg}")
 
 async def restore_backup(filename: str):
@@ -92,13 +74,13 @@ async def restore_backup(filename: str):
     filepath = os.path.join(BACKUP_DIR, filename)
     if not os.path.exists(filepath):
         raise FileNotFoundError("Backup file not found")
-        
+
     creds = get_db_credentials()
     env = os.environ.copy()
-    env["MYSQL_PWD"] = creds["password"]
-    
-    cmd = ["mysql", "-h", creds["host"], "-P", creds["port"], "-u", creds["user"], creds["db"]]
-    
+    env["PGPASSWORD"] = creds["password"]
+
+    cmd = ["psql", "-h", creds["host"], "-p", creds["port"], "-U", creds["user"], "-d", creds["db"], "--no-password"]
+
     with open(filepath, "r") as f:
         try:
             subprocess.run(cmd, env=env, stdin=f, check=True, capture_output=True, text=True)

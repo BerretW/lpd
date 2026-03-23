@@ -2,16 +2,16 @@ version: "3.9"
 
 services:
   db:
-    image: mysql:8.0
+    image: postgres:16
     container_name: appartus_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: database
-      MYSQL_PASSWORD: userpassword
-    ports: ["3306:3306"] # Odkomentuj, pokud se chceš připojit k DB z PC (DBeaver atd.)
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: rootpassword
+      POSTGRES_DB: database
+    ports: ["5432:5432"] # Odkomentuj, pokud se chceš připojit k DB z PC (DBeaver atd.)
     volumes:
-      - db_data:/var/lib/mysql
+      - db_data:/var/lib/postgresql/data
 
   api:
     build: ./backend
@@ -20,7 +20,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=mysql+asyncmy://root:rootpassword@db:3306/database
+      - DATABASE_URL=postgresql+asyncpg://postgres:rootpassword@db:5432/database
     volumes:
       - ./backend:/app
       - ./uploaded_files:/app/static
