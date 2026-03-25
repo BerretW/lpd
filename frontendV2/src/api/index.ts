@@ -11,3 +11,4 @@ export * from './pickingOrders';
 export * from './fleet';
 export * from './objects';
 export * from './plugins';
+export * from './quotes';

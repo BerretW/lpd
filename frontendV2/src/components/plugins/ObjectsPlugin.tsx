@@ -6,6 +6,7 @@ import Icon from '../common/Icon';
 import * as api from '../../api';
 import { InventoryItemOut, ClientOut, WorkOrderOut, ServiceReportOut } from '../../types';
 import ServiceReportForm from '../ServiceReportForm';
+import QuotesPlugin from './QuotesPlugin';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1260,6 +1261,7 @@ const ObjectDetail: React.FC<{
     const tabs = [
         { key: 'overview', label: 'Přehled' },
         ...site.technologies.map(t => ({ key: `tech_${t.id}`, label: t.techTypeName, color: t.color })),
+        { key: 'quotes', label: 'Nabídky' },
     ];
 
     return (
@@ -1334,6 +1336,9 @@ const ObjectDetail: React.FC<{
                         <TechDetailTab key={tech.id} tech={tech} typeDef={def} companyId={companyId} siteId={site.id} onRefresh={refresh} />
                     ) : null;
                 })}
+                {activeTab === 'quotes' && (
+                    <QuotesPlugin companyId={companyId} siteId={site.id} siteName={site.name} />
+                )}
             </Card>
 
             {editOpen && (
