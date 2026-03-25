@@ -289,7 +289,6 @@ const AddItemModal: React.FC<{
 
     return (
         <>
-            {showPicker && <InventoryPicker companyId={companyId} onSelect={handleSelectInventory} onClose={() => setShowPicker(false)} />}
             <Modal title={initial?.id ? 'Upravit položku' : 'Přidat položku'} onClose={onClose} size="lg">
                 <div className="space-y-4">
                     <div className="flex gap-2">
@@ -344,12 +343,20 @@ const AddItemModal: React.FC<{
                         <span className="text-slate-500">Celkem: <b className="text-red-600">{fmtPrice(total)}</b></span>
                     </div>
 
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={form.is_reduced_work ?? false}
-                            onChange={e => set('is_reduced_work', e.target.checked)}
-                            className="w-4 h-4 rounded text-yellow-500" />
-                        <span className="text-sm text-slate-700">Označit jako <span className="font-semibold text-yellow-700">méněpráce</span> (zákazník ušetří)</span>
-                    </label>
+                    <div
+                        className={`rounded-lg border px-3 py-2.5 cursor-pointer select-none transition-colors ${form.is_reduced_work ? 'bg-yellow-50 border-yellow-300' : 'bg-slate-50 border-slate-200 hover:border-yellow-300'}`}
+                        onClick={() => set('is_reduced_work', !(form.is_reduced_work ?? false))}>
+                        <div className="flex items-center gap-2.5">
+                            <input type="checkbox" checked={form.is_reduced_work ?? false}
+                                onChange={e => set('is_reduced_work', e.target.checked)}
+                                onClick={e => e.stopPropagation()}
+                                className="w-4 h-4 rounded accent-yellow-500 shrink-0" />
+                            <div>
+                                <p className="text-sm font-medium text-slate-700">Méněpráce</p>
+                                <p className="text-xs text-slate-500">Položka bude odečtena od ceny sekce jako zákazníkova úspora</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-6">
                     <Button variant="secondary" onClick={onClose}>Zrušit</Button>
@@ -358,6 +365,7 @@ const AddItemModal: React.FC<{
                     </Button>
                 </div>
             </Modal>
+            {showPicker && <InventoryPicker companyId={companyId} onSelect={handleSelectInventory} onClose={() => setShowPicker(false)} />}
         </>
     );
 };
@@ -374,7 +382,10 @@ const SectionTab: React.FC<{
     const [showAddItem, setShowAddItem] = useState(false);
     const [editItem, setEditItem] = useState<QuoteItem | null>(null);
 
-    const sectionTotal = section.items.reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const regularItems = section.items.filter(i => !i.is_reduced_work);
+    const reducedItems = section.items.filter(i => i.is_reduced_work);
+    const regularTotal = regularItems.reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const reducedTotal = reducedItems.reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
 
     const handleAddItem = async (data: Partial<QuoteItem>) => {
         try {
@@ -432,36 +443,34 @@ const SectionTab: React.FC<{
                         </tr>
                     </thead>
                     <tbody>
-                        {section.items.map((item, idx) => {
+                        {regularItems.length === 0 && reducedItems.length === 0 && (
+                            <tr>
+                                <td colSpan={8} className="text-center py-8 text-slate-400">Žádné položky. Přidejte první položku.</td>
+                            </tr>
+                        )}
+                        {regularItems.map((item, idx) => {
                             const total = item.quantity * (item.material_price + item.assembly_price);
                             return (
                                 <tr key={item.id}
-                                    className={`border-b border-slate-100 ${item.is_reduced_work ? 'bg-yellow-50' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-red-50 transition-colors`}>
+                                    className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-red-50 transition-colors`}>
                                     <td className="px-3 py-2 text-slate-400 text-xs">{idx + 1}</td>
                                     <td className="px-3 py-2">
-                                        <div className="flex items-center gap-2">
-                                            {item.is_reduced_work && (
-                                                <span className="text-xs bg-yellow-200 text-yellow-800 px-1.5 py-0.5 rounded font-semibold shrink-0">−</span>
-                                            )}
-                                            <span className={item.is_reduced_work ? 'text-slate-500 line-through' : 'text-slate-800'}>{item.name}</span>
-                                        </div>
+                                        <span className="text-slate-800">{item.name}</span>
                                         {item.inventory_category_name && (
-                                            <span className="text-xs text-slate-400">{item.inventory_category_name}</span>
+                                            <span className="block text-xs text-slate-400">{item.inventory_category_name}</span>
                                         )}
                                     </td>
                                     <td className="px-2 py-2 text-center text-slate-600">{item.unit}</td>
                                     <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
                                     <td className="px-2 py-2 text-right text-slate-600">{fmtPrice(item.material_price)}</td>
                                     <td className="px-2 py-2 text-right text-slate-600">{fmtPrice(item.assembly_price)}</td>
-                                    <td className={`px-2 py-2 text-right font-semibold ${item.is_reduced_work ? 'text-yellow-700' : 'text-slate-800'}`}>
-                                        {item.is_reduced_work ? '−' : ''}{fmtPrice(total)}
-                                    </td>
+                                    <td className="px-2 py-2 text-right font-semibold text-slate-800">{fmtPrice(total)}</td>
                                     <td className="px-2 py-2">
                                         <div className="flex items-center justify-end gap-1">
                                             <button
                                                 onClick={() => handleToggleReduced(item)}
-                                                title={item.is_reduced_work ? 'Zrušit méněpráce' : 'Označit jako méněpráce'}
-                                                className={`p-1 rounded text-xs transition-colors ${item.is_reduced_work ? 'text-yellow-600 bg-yellow-100 hover:bg-yellow-200' : 'text-slate-400 hover:text-yellow-600 hover:bg-yellow-50'}`}>
+                                                title="Označit jako méněpráce"
+                                                className="p-1 rounded text-xs text-slate-400 hover:text-yellow-700 hover:bg-yellow-100 transition-colors">
                                                 <Icon name="fa-minus-circle" />
                                             </button>
                                             <button onClick={() => setEditItem(item)}
@@ -477,20 +486,80 @@ const SectionTab: React.FC<{
                                 </tr>
                             );
                         })}
-                        {section.items.length === 0 && (
-                            <tr>
-                                <td colSpan={8} className="text-center py-8 text-slate-400">Žádné položky. Přidejte první položku.</td>
-                            </tr>
+                        {reducedItems.length > 0 && (
+                            <>
+                                <tr className="bg-yellow-100 border-y border-yellow-200">
+                                    <td colSpan={8} className="px-3 py-1.5 text-xs font-semibold text-yellow-800">
+                                        <Icon name="fa-minus-circle" className="mr-1.5" />Méněpráce — zákazník ušetří (odečteno od ceny sekce)
+                                    </td>
+                                </tr>
+                                {reducedItems.map((item, idx) => {
+                                    const total = item.quantity * (item.material_price + item.assembly_price);
+                                    return (
+                                        <tr key={item.id}
+                                            className={`border-b border-yellow-100 ${idx % 2 === 0 ? 'bg-yellow-50' : 'bg-white'} hover:bg-red-50 transition-colors`}>
+                                            <td className="px-3 py-2 text-slate-400 text-xs">{idx + 1}</td>
+                                            <td className="px-3 py-2">
+                                                <span className="text-slate-400 line-through">{item.name}</span>
+                                                {item.inventory_category_name && (
+                                                    <span className="block text-xs text-slate-400">{item.inventory_category_name}</span>
+                                                )}
+                                            </td>
+                                            <td className="px-2 py-2 text-center text-slate-500">{item.unit}</td>
+                                            <td className="px-2 py-2 text-right text-slate-500">{item.quantity}</td>
+                                            <td className="px-2 py-2 text-right text-slate-500">{fmtPrice(item.material_price)}</td>
+                                            <td className="px-2 py-2 text-right text-slate-500">{fmtPrice(item.assembly_price)}</td>
+                                            <td className="px-2 py-2 text-right font-semibold text-yellow-700">{fmtPrice(total)}</td>
+                                            <td className="px-2 py-2">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <button
+                                                        onClick={() => handleToggleReduced(item)}
+                                                        title="Zrušit méněpráce"
+                                                        className="px-1.5 py-1 rounded text-xs font-medium text-yellow-700 bg-yellow-200 hover:bg-yellow-300 transition-colors">
+                                                        <Icon name="fa-minus-circle" />
+                                                    </button>
+                                                    <button onClick={() => setEditItem(item)}
+                                                        className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+                                                        <Icon name="fa-edit" />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteItem(item.id)}
+                                                        className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                                                        <Icon name="fa-trash" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </>
                         )}
                     </tbody>
                     <tfoot>
-                        <tr className="bg-slate-100 font-semibold text-sm">
-                            <td colSpan={6} className="px-3 py-2 text-right text-slate-600">
-                                {section.name} celkem:
-                            </td>
-                            <td className="px-2 py-2 text-right text-red-600">{fmtPrice(sectionTotal)}</td>
-                            <td />
-                        </tr>
+                        {reducedItems.length > 0 ? (
+                            <>
+                                <tr className="bg-slate-50 text-sm">
+                                    <td colSpan={6} className="px-3 py-2 text-right text-slate-500">Standardní práce celkem:</td>
+                                    <td className="px-2 py-2 text-right text-slate-700 font-semibold">{fmtPrice(regularTotal)}</td>
+                                    <td />
+                                </tr>
+                                <tr className="bg-yellow-50 text-sm">
+                                    <td colSpan={6} className="px-3 py-1.5 text-right text-yellow-700">− Úspora méněpráce:</td>
+                                    <td className="px-2 py-1.5 text-right text-yellow-700 font-semibold">− {fmtPrice(reducedTotal)}</td>
+                                    <td />
+                                </tr>
+                                <tr className="bg-slate-100 font-semibold text-sm">
+                                    <td colSpan={6} className="px-3 py-2 text-right text-slate-600">{section.name} celkem:</td>
+                                    <td className="px-2 py-2 text-right text-red-600">{fmtPrice(regularTotal - reducedTotal)}</td>
+                                    <td />
+                                </tr>
+                            </>
+                        ) : (
+                            <tr className="bg-slate-100 font-semibold text-sm">
+                                <td colSpan={6} className="px-3 py-2 text-right text-slate-600">{section.name} celkem:</td>
+                                <td className="px-2 py-2 text-right text-red-600">{fmtPrice(regularTotal)}</td>
+                                <td />
+                            </tr>
+                        )}
                     </tfoot>
                 </table>
             </div>
@@ -519,19 +588,21 @@ const CenotvorbaTab: React.FC<{
     quote: Quote;
     companyId: number;
     onRefresh: () => void;
-}> = ({ quote, companyId, onRefresh }) => {
+    parentQuote?: Quote;
+}> = ({ quote, companyId, onRefresh, parentQuote }) => {
+    const pricing = parentQuote ?? quote;
     const [form, setForm] = useState({
         validity_days: quote.validity_days,
         currency: quote.currency,
-        vat_rate: quote.vat_rate,
-        global_discount: quote.global_discount,
-        global_discount_type: quote.global_discount_type,
-        global_hourly_rate: quote.global_hourly_rate,
+        vat_rate: pricing.vat_rate,
+        global_discount: pricing.global_discount,
+        global_discount_type: pricing.global_discount_type,
+        global_hourly_rate: pricing.global_hourly_rate,
         prepared_by: quote.prepared_by ?? '',
         prepared_by_phone: quote.prepared_by_phone ?? '',
         notes: quote.notes ?? '',
     });
-    const [assemblies, setAssemblies] = useState<CategoryAssembly[]>(quote.category_assemblies);
+    const [assemblies, setAssemblies] = useState<CategoryAssembly[]>(parentQuote ? parentQuote.category_assemblies : quote.category_assemblies);
     const [saving, setSaving] = useState(false);
 
     // Gather unique categories from all items
@@ -558,12 +629,34 @@ const CenotvorbaTab: React.FC<{
             await quotesApi.updateQuote(companyId, quote.id, form);
             const cleanAssemblies = assemblies.map(({ category_name, assembly_price_per_unit }) => ({ category_name, assembly_price_per_unit }));
             await quotesApi.upsertCategoryAssemblies(companyId, quote.id, cleanAssemblies);
+
+            // Propagate assembly prices to all items with matching category
+            const updatePromises: Promise<any>[] = [];
+            for (const section of quote.sections) {
+                for (const item of section.items) {
+                    if (!item.inventory_category_name) continue;
+                    const match = cleanAssemblies.find((a: { category_name: string; assembly_price_per_unit: number }) => a.category_name === item.inventory_category_name);
+                    if (match && item.assembly_price !== match.assembly_price_per_unit) {
+                        updatePromises.push(
+                            quotesApi.updateItem(companyId, quote.id, section.id, item.id, { assembly_price: match.assembly_price_per_unit })
+                        );
+                    }
+                }
+            }
+            if (updatePromises.length > 0) await Promise.all(updatePromises);
+
             onRefresh();
         } catch (err) { console.error(err); } finally { setSaving(false); }
     };
 
     return (
         <div className="space-y-6">
+            {parentQuote && (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+                    <Icon name="fa-link" className="shrink-0" />
+                    <span>Cenotvorba (DPH, sleva, sazby montáže) je zděděna z hlavní nabídky <strong>{parentQuote.name}</strong> a nelze ji zde měnit.</span>
+                </div>
+            )}
             <div>
                 <h3 className="font-semibold text-slate-700 mb-3">Základní nastavení</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -593,14 +686,14 @@ const CenotvorbaTab: React.FC<{
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Sazba DPH (%)</label>
-                        <input type="number" min="0" max="100"
-                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                        <input type="number" min="0" max="100" disabled={!!parentQuote}
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-slate-100 disabled:text-slate-400"
                             value={form.vat_rate} onChange={e => set('vat_rate', parseFloat(e.target.value) || 0)} />
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Globální hodinová sazba (Kč)</label>
-                        <input type="number" min="0"
-                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                        <input type="number" min="0" disabled={!!parentQuote}
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-slate-100 disabled:text-slate-400"
                             value={form.global_hourly_rate} onChange={e => set('global_hourly_rate', parseFloat(e.target.value) || 0)} />
                     </div>
                 </div>
@@ -609,10 +702,10 @@ const CenotvorbaTab: React.FC<{
             <div>
                 <h3 className="font-semibold text-slate-700 mb-3">Sleva</h3>
                 <div className="flex items-center gap-3">
-                    <input type="number" min="0"
-                        className="w-36 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    <input type="number" min="0" disabled={!!parentQuote}
+                        className="w-36 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-slate-100 disabled:text-slate-400"
                         value={form.global_discount} onChange={e => set('global_discount', parseFloat(e.target.value) || 0)} />
-                    <select className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    <select disabled={!!parentQuote} className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-slate-100 disabled:text-slate-400"
                         value={form.global_discount_type} onChange={e => set('global_discount_type', e.target.value)}>
                         <option value="percent">% (procenta)</option>
                         <option value="amount">Kč (pevná částka)</option>
@@ -648,8 +741,8 @@ const CenotvorbaTab: React.FC<{
                                     <tr key={a.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                                         <td className="px-4 py-2 font-medium text-slate-700">{a.category_name}</td>
                                         <td className="px-4 py-2">
-                                            <input type="number" min="0" step="0.5"
-                                                className="w-32 ml-auto block border border-slate-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-red-500"
+                                            <input type="number" min="0" step="0.5" disabled={!!parentQuote}
+                                                className="w-32 ml-auto block border border-slate-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-slate-100 disabled:text-slate-400"
                                                 value={a.assembly_price_per_unit}
                                                 onChange={e => {
                                                     const val = parseFloat(e.target.value) || 0;
@@ -662,13 +755,15 @@ const CenotvorbaTab: React.FC<{
                         </table>
                     </div>
                 )}
-                <div className="mt-2">
-                    <button
-                        className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                        onClick={() => setAssemblies(prev => [...prev, { id: -Date.now(), quote_id: quote.id, category_name: 'Nová kategorie', assembly_price_per_unit: 0 }])}>
-                        <Icon name="fa-plus" className="text-xs" /> Přidat kategorii ručně
-                    </button>
-                </div>
+                {!parentQuote && (
+                    <div className="mt-2">
+                        <button
+                            className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                            onClick={() => setAssemblies(prev => [...prev, { id: -Date.now(), quote_id: quote.id, category_name: 'Nová kategorie', assembly_price_per_unit: 0 }])}>
+                            <Icon name="fa-plus" className="text-xs" /> Přidat kategorii ručně
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div>
@@ -751,13 +846,28 @@ const AddSectionModal: React.FC<{
     onSave: (data: any) => void;
     onClose: () => void;
     isExtras?: boolean;
-}> = ({ onSave, onClose, isExtras }) => {
+    suggestedNames?: string[];
+}> = ({ onSave, onClose, isExtras, suggestedNames }) => {
     const [name, setName] = useState('');
     const [prefix, setPrefix] = useState('');
 
     return (
         <Modal title={isExtras ? 'Přidat sekci Vícepráce' : 'Přidat sekci'} onClose={onClose}>
             <div className="space-y-4">
+                {suggestedNames && suggestedNames.length > 0 && (
+                    <div>
+                        <p className="text-xs font-medium text-slate-500 mb-2">Technologie objektu — kliknutím vyplnit:</p>
+                        <div className="flex flex-wrap gap-2">
+                            {suggestedNames.map((n: string) => (
+                                <button key={n} type="button"
+                                    onClick={() => setName(n)}
+                                    className={`px-3 py-1 rounded-full text-xs border transition-colors ${name === n ? 'bg-red-600 text-white border-red-600' : 'border-slate-300 text-slate-600 hover:border-red-400 hover:text-red-600'}`}>
+                                    {n}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Název sekce *</label>
                     <input autoFocus className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -786,9 +896,12 @@ const AddSectionModal: React.FC<{
 const QuoteDetail: React.FC<{
     quoteId: number;
     companyId: number;
+    siteTechTypes?: string[];
     onBack: () => void;
-}> = ({ quoteId, companyId, onBack }) => {
+    onOpenQuote?: (quoteId: number) => void;
+}> = ({ quoteId, companyId, siteTechTypes, onBack, onOpenQuote }) => {
     const [quote, setQuote] = useState<Quote | null>(null);
+    const [parentQuote, setParentQuote] = useState<Quote | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<string>('cenotvorba');
     const [showAddSection, setShowAddSection] = useState(false);
@@ -798,6 +911,12 @@ const QuoteDetail: React.FC<{
         try {
             const q = await quotesApi.getQuote(companyId, quoteId);
             setQuote(q);
+            if (q.parent_quote_id) {
+                const parent = await quotesApi.getQuote(companyId, q.parent_quote_id);
+                setParentQuote(parent);
+            } else {
+                setParentQuote(null);
+            }
         } catch (err) { console.error(err); }
     }, [companyId, quoteId]);
 
@@ -825,10 +944,14 @@ const QuoteDetail: React.FC<{
         } catch (err) { console.error(err); }
     };
 
-    const handleExportPdf = () => {
+    const handleExportPdf = async () => {
         if (!quote) return;
-        const companyName = (api as any).getCompanyName?.() ?? '';
-        printQuotePdf(quote, companyName);
+        try {
+            const company = await api.getCompany(companyId);
+            printQuotePdf(quote, company.name);
+        } catch {
+            printQuotePdf(quote, '');
+        }
     };
 
     const handleStatusChange = async (status: string) => {
@@ -923,7 +1046,7 @@ const QuoteDetail: React.FC<{
             {/* Tab content */}
             <Card>
                 {activeTab === 'cenotvorba' && (
-                    <CenotvorbaTab quote={quote} companyId={companyId} onRefresh={refresh} />
+                    <CenotvorbaTab quote={quote} companyId={companyId} onRefresh={refresh} parentQuote={parentQuote ?? undefined} />
                 )}
                 {tabs.filter(t => t.sectionId).map(tab => {
                     const sec = quote.sections.find(s => s.id === tab.sectionId);
@@ -936,8 +1059,7 @@ const QuoteDetail: React.FC<{
             </Card>
 
             {/* Sub-quotes */}
-            {(quote.sub_quotes?.length > 0 || true) && (
-                <div className="mt-6">
+            <div className="mt-6">
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-slate-700">
                             <Icon name="fa-sitemap" className="mr-2 text-slate-400" />
@@ -947,7 +1069,7 @@ const QuoteDetail: React.FC<{
                             const name = window.prompt('Název podnabídky:');
                             if (!name?.trim()) return;
                             try {
-                                const sub = await quotesApi.createQuote(companyId, {
+                                await quotesApi.createQuote(companyId, {
                                     name: name.trim(),
                                     parent_quote_id: quote.id,
                                     site_id: quote.site_id,
@@ -955,6 +1077,8 @@ const QuoteDetail: React.FC<{
                                     validity_days: quote.validity_days,
                                     currency: quote.currency,
                                     vat_rate: quote.vat_rate,
+                                    global_discount: quote.global_discount,
+                                    global_discount_type: quote.global_discount_type,
                                     global_hourly_rate: quote.global_hourly_rate,
                                 });
                                 await refresh();
@@ -973,7 +1097,7 @@ const QuoteDetail: React.FC<{
                                         <p className="font-medium text-slate-800">{sub.name}</p>
                                         <p className="text-xs text-slate-500">{STATUS_LABELS[sub.status]?.label}</p>
                                     </div>
-                                    <Button variant="secondary" onClick={() => {/* navigate to sub */}}>
+                                    <Button variant="secondary" onClick={() => onOpenQuote?.(sub.id)}>
                                         <Icon name="fa-external-link-alt" className="mr-1" />Otevřít
                                     </Button>
                                 </div>
@@ -981,10 +1105,9 @@ const QuoteDetail: React.FC<{
                         </div>
                     )}
                 </div>
-            )}
 
-            {showAddSection && <AddSectionModal onSave={handleAddSection} onClose={() => setShowAddSection(false)} />}
-            {showAddExtras && <AddSectionModal onSave={handleAddSection} onClose={() => setShowAddExtras(false)} isExtras />}
+            {showAddSection && <AddSectionModal onSave={handleAddSection} onClose={() => setShowAddSection(false)} suggestedNames={siteTechTypes} />}
+            {showAddExtras && <AddSectionModal onSave={handleAddSection} onClose={() => setShowAddExtras(false)} isExtras suggestedNames={siteTechTypes} />}
         </div>
     );
 };
@@ -995,12 +1118,13 @@ const NewQuoteModal: React.FC<{
     clients: any[];
     siteId?: number;
     siteName?: string;
+    initialCustomerId?: number;
     onSave: (data: any) => void;
     onClose: () => void;
-}> = ({ clients, siteId, siteName, onSave, onClose }) => {
+}> = ({ clients, siteId, siteName, initialCustomerId, onSave, onClose }) => {
     const [form, setForm] = useState({
         name: siteName ? `Nabídka - ${siteName}` : '',
-        customer_id: '',
+        customer_id: initialCustomerId ? String(initialCustomerId) : '',
         prepared_by: '',
         prepared_by_phone: '',
         validity_days: 14,
@@ -1079,9 +1203,11 @@ interface QuotesPluginProps {
     companyId: number;
     siteId?: number;
     siteName?: string;
+    siteCustomerId?: number;
+    siteTechTypes?: string[];
 }
 
-const QuotesPlugin: React.FC<QuotesPluginProps> = ({ companyId, siteId, siteName }) => {
+const QuotesPlugin: React.FC<QuotesPluginProps> = ({ companyId, siteId, siteName, siteCustomerId, siteTechTypes }) => {
     const [quotes, setQuotes] = useState<any[]>([]);
     const [clients, setClients] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -1124,7 +1250,9 @@ const QuotesPlugin: React.FC<QuotesPluginProps> = ({ companyId, siteId, siteName
             <QuoteDetail
                 quoteId={selectedQuoteId}
                 companyId={companyId}
+                siteTechTypes={siteTechTypes}
                 onBack={() => { setSelectedQuoteId(null); loadData(); }}
+                onOpenQuote={setSelectedQuoteId}
             />
         );
     }
@@ -1195,6 +1323,7 @@ const QuotesPlugin: React.FC<QuotesPluginProps> = ({ companyId, siteId, siteName
 
             {showNew && (
                 <NewQuoteModal clients={clients} siteId={siteId} siteName={siteName}
+                    initialCustomerId={siteCustomerId}
                     onSave={handleCreate} onClose={() => setShowNew(false)} />
             )}
         </div>

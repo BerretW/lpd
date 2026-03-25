@@ -1337,7 +1337,9 @@ const ObjectDetail: React.FC<{
                     ) : null;
                 })}
                 {activeTab === 'quotes' && (
-                    <QuotesPlugin companyId={companyId} siteId={site.id} siteName={site.name} />
+                    <QuotesPlugin companyId={companyId} siteId={site.id} siteName={site.name}
+                        siteCustomerId={site.customerId}
+                        siteTechTypes={site.technologies.map(t => t.techTypeName)} />
                 )}
             </Card>
 
