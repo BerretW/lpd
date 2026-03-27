@@ -1,0 +1,134 @@
+import { Quote } from './types';
+
+export const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+    draft: { label: 'Koncept', color: 'bg-slate-200 text-slate-700' },
+    sent: { label: 'Odesláno', color: 'bg-blue-100 text-blue-700' },
+    accepted: { label: 'Přijato', color: 'bg-green-100 text-green-700' },
+    rejected: { label: 'Zamítnuto', color: 'bg-red-100 text-red-700' },
+};
+
+export const fmtPrice = (v: number) =>
+    v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
+
+export function printQuotePdf(quote: Quote, companyName: string) {
+    const fmtP = (v: number) =>
+        v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
+
+    const regularSections = quote.sections.filter(s => !s.is_extras);
+    const extrasSections = quote.sections.filter(s => s.is_extras);
+
+    const subtotal = regularSections.flatMap(s => s.items).filter(i => !i.is_reduced_work)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const reducedTotal = regularSections.flatMap(s => s.items).filter(i => i.is_reduced_work)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const extrasTotal = extrasSections.flatMap(s => s.items)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+
+    let discountAmount = 0;
+    if (quote.global_discount > 0) {
+        discountAmount = quote.global_discount_type === 'percent'
+            ? subtotal * quote.global_discount / 100
+            : quote.global_discount;
+    }
+    const net = subtotal - discountAmount - reducedTotal + extrasTotal;
+    const vat = net * quote.vat_rate / 100;
+    const gross = net + vat;
+
+    const createdDate = new Date(quote.created_at).toLocaleDateString('cs-CZ');
+    const validUntil = new Date(new Date(quote.created_at).getTime() + quote.validity_days * 86400000).toLocaleDateString('cs-CZ');
+
+    const sectionRows = (sections: typeof regularSections, isExtras: boolean) => sections.map(sec => {
+        const secTotal = sec.items.reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+        const itemRows = sec.items.map((item, idx) => {
+            const total = item.quantity * (item.material_price + item.assembly_price);
+            const bg = item.is_reduced_work ? '#FFFF99' : idx % 2 === 0 ? '#fff' : '#f8f8f8';
+            return `<tr style="background:${bg}">
+                <td style="padding:3px 5px;color:#999;font-size:10px">${sec.prefix || ''}</td>
+                <td style="padding:3px 5px;font-size:10px${item.is_reduced_work ? ';text-decoration:line-through;color:#888' : ''}">${item.name}</td>
+                <td style="padding:3px 5px;text-align:center;font-size:10px">${item.unit}</td>
+                <td style="padding:3px 5px;text-align:right;font-size:10px">${item.quantity}</td>
+                <td style="padding:3px 5px;text-align:right;font-size:10px">${fmtP(item.material_price)}</td>
+                <td style="padding:3px 5px;text-align:right;font-size:10px">${fmtP(item.assembly_price)}</td>
+                <td style="padding:3px 5px;text-align:right;font-size:10px">${fmtP(item.material_price + item.assembly_price)}</td>
+                <td style="padding:3px 5px;text-align:right;font-size:10px;font-weight:600${item.is_reduced_work ? ';color:#996600' : ''}">${item.is_reduced_work ? '−' : ''}${fmtP(total)}</td>
+            </tr>`;
+        }).join('');
+        return `
+            <tr style="background:#eee">
+                <td style="padding:4px 5px;font-weight:700;font-size:10px">${sec.prefix || ''}</td>
+                <td colspan="7" style="padding:4px 5px;font-weight:700;font-size:10px">${isExtras ? '[VÍCEPRÁCE] ' : ''}${sec.name}</td>
+            </tr>
+            ${itemRows}
+            <tr style="background:#ddd">
+                <td colspan="7" style="padding:4px 5px;text-align:right;font-weight:700;font-size:10px">${sec.name} celkem:</td>
+                <td style="padding:4px 5px;text-align:right;font-weight:700;color:#cc0000;font-size:10px">${fmtP(secTotal)}</td>
+            </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>${quote.name}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 15mm; font-size: 10px; color: #333; }
+        table { width: 100%; border-collapse: collapse; }
+        @media print { body { padding: 0; } @page { margin: 12mm; size: A4; } }
+        .hdr { background: #1a1a1a; color: #fff; padding: 6px 10px; font-weight: 700; font-size: 11px; margin: 8px 0; }
+        .meta td { padding: 2px 4px; font-size: 10px; }
+        .meta td:first-child { font-weight: 700; width: 130px; }
+        th { background: #1a1a1a; color: #fff; padding: 5px; font-size: 10px; text-align: right; }
+        th:first-child, th:nth-child(2) { text-align: left; }
+        .recap td { padding: 3px 6px; font-size: 10px; }
+        .recap .lbl { text-align: right; }
+        hr { border: none; border-top: 0.5px solid #ccc; margin: 8px 0; }
+    </style></head><body>
+    <table><tr>
+        <td style="font-size:14px;font-weight:700">${companyName}</td>
+        <td style="text-align:right;font-size:9px;color:#666">www.lpdweb.cz • info@lpdweb.cz</td>
+    </tr></table>
+    <div class="hdr">ZABEZPEČOVACÍ, POŽÁRNÍ, KAMEROVÉ, PŘÍSTUPOVÉ SYSTÉMY A ELEKTROINSTALACE</div>
+    <table class="meta">
+        <tr><td>Název zakázky:</td><td><b>${quote.name}</b></td></tr>
+        <tr><td>Zákazník:</td><td>${quote.customer_name || ''}</td></tr>
+        <tr><td>Zpracoval:</td><td>${quote.prepared_by || ''}${quote.prepared_by_phone ? '  tel. ' + quote.prepared_by_phone : ''}</td></tr>
+        <tr><td>Platnost nabídky:</td><td>${quote.validity_days} dní (do ${validUntil})</td></tr>
+        <tr><td>Datum:</td><td>${createdDate}</td></tr>
+    </table>
+    <br>
+    <table>
+        <thead><tr>
+            <th style="width:32px"></th>
+            <th style="text-align:left">Položka</th>
+            <th style="width:36px">M.j.</th>
+            <th style="width:50px">Počet</th>
+            <th style="width:80px">Materiál</th>
+            <th style="width:80px">Montáž</th>
+            <th style="width:80px">Cena/ks</th>
+            <th style="width:90px">Cena celkem</th>
+        </tr></thead>
+        <tbody>
+            ${sectionRows(regularSections, false)}
+            ${extrasSections.length > 0 ? sectionRows(extrasSections, true) : ''}
+        </tbody>
+    </table>
+    <br>
+    <div style="font-size:13px;font-weight:700;color:#cc0000;margin-bottom:6px">Rekapitulace</div>
+    <table class="recap" style="width:60%;margin-left:auto">
+        <tr><td class="lbl">Celkem bez DPH (před slevou):</td><td>${fmtP(subtotal)}</td></tr>
+        ${reducedTotal > 0 ? `<tr style="color:#996600"><td class="lbl">Úspora - méněpráce:</td><td>− ${fmtP(reducedTotal)}</td></tr>` : ''}
+        ${discountAmount > 0 ? `<tr style="color:#006600"><td class="lbl">Sleva (${quote.global_discount}${quote.global_discount_type === 'percent' ? '%' : ' Kč'}):</td><td>− ${fmtP(discountAmount)}</td></tr>` : ''}
+        ${extrasTotal > 0 ? `<tr style="color:#cc0000;font-weight:700"><td class="lbl">Vícepráce:</td><td>+ ${fmtP(extrasTotal)}</td></tr>` : ''}
+        <tr style="border-top:1px solid #333;font-weight:700"><td class="lbl">DODÁVKA A MONTÁŽ CELKEM BEZ DPH:</td><td>${fmtP(net)}</td></tr>
+        <tr><td class="lbl">DPH ${quote.vat_rate}%:</td><td>${fmtP(vat)}</td></tr>
+        <tr style="border-top:2px solid #cc0000;font-size:13px;font-weight:700;color:#cc0000"><td class="lbl">DODÁVKA CELKEM S DPH:</td><td>${fmtP(gross)}</td></tr>
+    </table>
+    ${quote.notes ? `<br><div style="font-size:10px"><b>Poznámky:</b><br>${quote.notes}</div>` : ''}
+    <hr style="margin-top:20px">
+    <div style="text-align:center;font-size:8px;color:#999">${companyName} • www.lpdweb.cz • info@lpdweb.cz</div>
+    </body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    if (!w) { alert('Povolte vyskakovací okna pro tisk PDF.'); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 400);
+}
