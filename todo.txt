@@ -1,1 +1,0 @@
-zákazník by se při vyttváření nabýdky měl vyplnit podle objektu. Při vybírání sekci by se měl scritp řídit vytvořenými druhy technologií se kterými objeky pracují
