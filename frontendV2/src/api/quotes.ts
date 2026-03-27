@@ -56,6 +56,19 @@ export const getQuotePdfUrl = (cid: number, quoteId: number): string => {
     return `${API_BASE_URL}/plugins/quotes/${cid}/quotes/${quoteId}/pdf?token=${encodeURIComponent(token)}`;
 };
 
+// ─── Quote Invoices ───────────────────────────────────────────────────────────
+
+export const listQuoteInvoices = (cid: number, quoteId: number): Promise<any[]> =>
+    fetchApi(`/plugins/quotes/${cid}/quotes/${quoteId}/invoices`);
+
+export const createQuoteInvoice = (cid: number, quoteId: number, data: any): Promise<any> =>
+    fetchApi(`/plugins/quotes/${cid}/quotes/${quoteId}/invoices`, { method: 'POST', body: JSON.stringify(data) });
+
+export const deleteQuoteInvoice = (cid: number, quoteId: number, invoiceId: number): Promise<void> =>
+    fetchApi(`/plugins/quotes/${cid}/quotes/${quoteId}/invoices/${invoiceId}`, { method: 'DELETE' });
+
+// ─── PDF Export ───────────────────────────────────────────────────────────────
+
 export const downloadQuotePdf = async (cid: number, quoteId: number, quoteName: string): Promise<void> => {
     const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
     const response = await fetch(`${API_BASE_URL}/plugins/quotes/${cid}/quotes/${quoteId}/pdf`, {

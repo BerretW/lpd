@@ -5,7 +5,8 @@ import Icon from '../../common/Icon';
 import * as api from '../../../api';
 import * as quotesApi from '../../../api/quotes';
 import { Quote } from './types';
-import { STATUS_LABELS, printQuotePdf, computeQuoteRef } from './utils';
+import { STATUS_LABELS, printQuotePdf, printInvoicePdf, computeQuoteRef } from './utils';
+import { getClients } from '../../../api/clients';
 import SummaryBar from './SummaryBar';
 import CenotvorbaTab from './CenotvorbaTab';
 import SectionTab from './SectionTab';
@@ -27,6 +28,14 @@ const QuoteDetail: React.FC<{
     const [showAddSection, setShowAddSection] = useState(false);
     const [showAddExtras, setShowAddExtras] = useState(false);
     const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+    const [invoices, setInvoices] = useState<any[]>([]);
+
+    const refreshInvoices = useCallback(async () => {
+        try {
+            const list = await quotesApi.listQuoteInvoices(companyId, quoteId);
+            setInvoices(list);
+        } catch { /* plugin nemusí být dostupný */ }
+    }, [companyId, quoteId]);
 
     const refresh = useCallback(async () => {
         try {
@@ -52,6 +61,8 @@ const QuoteDetail: React.FC<{
         setLoading(true);
         refresh().finally(() => setLoading(false));
     }, [refresh]);
+
+    useEffect(() => { refreshInvoices(); }, [refreshInvoices]);
 
     const handleAddSection = async (data: any) => {
         try {
@@ -97,6 +108,40 @@ const QuoteDetail: React.FC<{
         try {
             const newQ = await quotesApi.newVersionQuote(companyId, quote.id);
             onOpenQuote?.(newQ.id);
+        } catch (err) { console.error(err); }
+    };
+
+    const handleViewInvoice = async (inv: any) => {
+        if (!quote) return;
+        try {
+            const [comp, clients] = await Promise.all([
+                api.getCompany(companyId),
+                quote.customer_id ? getClients(companyId) : Promise.resolve([]),
+            ]);
+            const company = {
+                name: comp.name,
+                legal_name: comp.legal_name,
+                address: comp.address,
+                ico: comp.ico,
+                dic: comp.dic,
+                bank_account: comp.bank_account,
+                iban: comp.iban,
+            };
+            const found = quote.customer_id
+                ? (clients as any[]).find((c: any) => c.id === quote.customer_id)
+                : null;
+            const client = found
+                ? { name: found.name, legal_name: found.legal_name, address: found.address, ico: found.ico, dic: found.dic }
+                : { name: quote.customer_name || '' };
+            printInvoicePdf(quote, company, client, {
+                invoice_number: inv.invoice_number,
+                issue_date: inv.issue_date,
+                duzp: inv.duzp,
+                due_date: inv.due_date,
+                variable_symbol: inv.variable_symbol,
+                payment_method: inv.payment_method,
+                note: inv.note,
+            });
         } catch (err) { console.error(err); }
     };
 
@@ -276,6 +321,50 @@ const QuoteDetail: React.FC<{
                 )}
             </div>
 
+            {/* Faktury */}
+            {invoices.length > 0 && (
+                <div className="mt-6">
+                    <h3 className="font-semibold text-slate-700 mb-3">
+                        <Icon name="fa-file-invoice" className="mr-2 text-slate-400" />
+                        Vygenerované faktury
+                    </h3>
+                    <div className="space-y-2">
+                        {invoices.map(inv => (
+                            <div key={inv.id} className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-3">
+                                <div>
+                                    <span className="font-mono font-bold text-slate-800 text-sm">{inv.invoice_number}</span>
+                                    <span className="ml-3 text-xs text-slate-500">
+                                        vystaveno {new Date(inv.issue_date).toLocaleDateString('cs-CZ')}
+                                        {' · '}splatnost {new Date(inv.due_date).toLocaleDateString('cs-CZ')}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="font-bold text-red-600 text-sm">
+                                        {inv.total_gross.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                                    </span>
+                                    <button
+                                        onClick={() => handleViewInvoice(inv)}
+                                        className="text-slate-400 hover:text-red-600 transition-colors"
+                                        title="Zobrazit / tisknout fakturu">
+                                        <Icon name="fa-eye" className="text-sm" />
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            if (!window.confirm(`Smazat fakturu ${inv.invoice_number}?`)) return;
+                                            await quotesApi.deleteQuoteInvoice(companyId, quoteId, inv.id);
+                                            refreshInvoices();
+                                        }}
+                                        className="text-slate-300 hover:text-red-500 transition-colors"
+                                        title="Smazat záznam faktury">
+                                        <Icon name="fa-trash" className="text-xs" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {showAddSection && <AddSectionModal onSave={handleAddSection} onClose={() => setShowAddSection(false)} suggestedNames={siteTechTypes} />}
             {showAddExtras && <AddSectionModal onSave={handleAddSection} onClose={() => setShowAddExtras(false)} isExtras suggestedNames={siteTechTypes} />}
             {showInvoiceModal && (
@@ -283,6 +372,7 @@ const QuoteDetail: React.FC<{
                     quote={quote}
                     companyId={companyId}
                     onClose={() => setShowInvoiceModal(false)}
+                    onSaved={refreshInvoices}
                 />
             )}
         </div>

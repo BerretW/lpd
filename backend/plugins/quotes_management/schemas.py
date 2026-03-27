@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 
 
 # ─── Category Assembly ────────────────────────────────────────────────────────
@@ -162,4 +162,35 @@ class QuoteOut(BaseModel):
     category_assemblies: list[QuoteCategoryAssemblyOut] = []
     sub_quotes: list[QuoteListOut] = []
     model_config = ConfigDict(from_attributes=True)
+
+
+# ─── Quote Invoice ─────────────────────────────────────────────────────────────
+
+class QuoteInvoiceIn(BaseModel):
+    invoice_number: str
+    issue_date: str
+    duzp: str
+    due_date: str
+    variable_symbol: str
+    payment_method: str = "převodem"
+    note: Optional[str] = None
+    total_net: float
+    total_vat: float
+    total_gross: float
+
+
+class QuoteInvoiceOut(BaseModel):
+    id: int
+    quote_id: int
+    invoice_number: str
+    issue_date: str
+    duzp: str
+    due_date: str
+    variable_symbol: str
+    payment_method: str
+    note: Optional[str] = None
+    total_net: float
+    total_vat: float
+    total_gross: float
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)

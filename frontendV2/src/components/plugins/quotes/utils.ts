@@ -101,6 +101,26 @@ export function computeVatBreakdown(quote: Quote): { rate: number; base: number;
         .sort((a, b) => a.rate - b.rate);
 }
 
+/**
+ * Číslo faktury odvozené z reference nabídky.
+ * Formát: {rok}/{quoteRef}  →  např. "2025/42/15-v2-11"
+ */
+export function computeInvoiceNumber(quote: Quote): string {
+    const year = new Date().getFullYear();
+    return `${year}/${computeQuoteRef(quote)}`;
+}
+
+/**
+ * Variabilní symbol: ryze číselný kód pro bankovní platbu.
+ * Kombinuje ID zákazníka (max 4 cifry) a ID nabídky (max 6 číslic).
+ * Příklad: zákazník 42, nabídka 157  →  "42000157"
+ */
+export function computeVariableSymbol(quote: Quote): string {
+    const custPart = String(quote.customer_id ?? 0).slice(0, 4).padStart(4, '0');
+    const quotePart = String(quote.id).slice(0, 6).padStart(6, '0');
+    return `${custPart}${quotePart}`;
+}
+
 export interface InvoiceConfig {
     invoice_number: string;
     issue_date: string;       // YYYY-MM-DD

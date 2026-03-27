@@ -3,13 +3,15 @@ import Button from '../../common/Button';
 import Icon from '../../common/Icon';
 import * as api from '../../../api';
 import { getClients } from '../../../api/clients';
+import { createQuoteInvoice } from '../../../api/quotes';
 import { Quote } from './types';
-import { InvoiceConfig, InvoiceCompany, InvoiceClient, printInvoicePdf, computeVatBreakdown } from './utils';
+import { InvoiceConfig, InvoiceCompany, InvoiceClient, printInvoicePdf, computeVatBreakdown, computeInvoiceNumber, computeVariableSymbol } from './utils';
 
 interface Props {
     quote: Quote;
     companyId: number;
     onClose: () => void;
+    onSaved?: () => void;
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -19,18 +21,18 @@ const addDays = (d: string, n: number) => {
     return dt.toISOString().slice(0, 10);
 };
 
-const GenerateInvoiceModal: React.FC<Props> = ({ quote, companyId, onClose }) => {
+const GenerateInvoiceModal: React.FC<Props> = ({ quote, companyId, onClose, onSaved }) => {
     const [company, setCompany] = useState<InvoiceCompany | null>(null);
     const [client, setClient] = useState<InvoiceClient | null>(null);
     const [loading, setLoading] = useState(true);
 
     const issueToday = today();
     const [cfg, setCfg] = useState<InvoiceConfig>({
-        invoice_number: '',
+        invoice_number: computeInvoiceNumber(quote),
         issue_date: issueToday,
         duzp: issueToday,
         due_date: addDays(issueToday, 14),
-        variable_symbol: '',
+        variable_symbol: computeVariableSymbol(quote),
         payment_method: 'převodem',
         note: '',
     });
@@ -73,17 +75,28 @@ const GenerateInvoiceModal: React.FC<Props> = ({ quote, companyId, onClose }) =>
         setCfg(c => ({ ...c, issue_date: v, duzp: v, due_date: addDays(v, 14) }));
     };
 
-    const handleGenerate = () => {
+    const handleGenerate = async () => {
         if (!cfg.invoice_number.trim()) {
             alert('Zadejte číslo faktury.');
             return;
         }
+        const effectiveCfg = { ...cfg, variable_symbol: cfg.variable_symbol || cfg.invoice_number };
         const effectiveClient = client ?? { name: quote.customer_name || '' };
         const effectiveCompany = company ?? { name: '' };
-        printInvoicePdf(quote, effectiveCompany, effectiveClient, {
-            ...cfg,
-            variable_symbol: cfg.variable_symbol || cfg.invoice_number,
-        });
+
+        printInvoicePdf(quote, effectiveCompany, effectiveClient, effectiveCfg);
+
+        try {
+            await createQuoteInvoice(companyId, quote.id, {
+                ...effectiveCfg,
+                total_net: net,
+                total_vat: totalVat,
+                total_gross: gross,
+            });
+            onSaved?.();
+        } catch (e) {
+            console.error('Nepodařilo se uložit fakturu:', e);
+        }
     };
 
     const vatBreakdown = computeVatBreakdown(quote);

@@ -7,12 +7,13 @@ import io
 from app.db.database import get_db
 from app.core.dependencies import require_company_access
 from app.db.models import Client, Company
-from .models import Quote, QuoteSection, QuoteItem, QuoteCategoryAssembly
+from .models import Quote, QuoteSection, QuoteItem, QuoteCategoryAssembly, QuoteInvoice
 from .schemas import (
     QuoteIn, QuoteUpdate, QuoteOut, QuoteListOut,
     QuoteSectionIn, QuoteSectionUpdate, QuoteSectionOut,
     QuoteItemIn, QuoteItemUpdate, QuoteItemOut,
     QuoteCategoryAssemblyIn, QuoteCategoryAssemblyOut,
+    QuoteInvoiceIn, QuoteInvoiceOut,
 )
 
 router = APIRouter(prefix="/plugins/quotes", tags=["plugin-quotes"])
@@ -382,3 +383,58 @@ async def export_quote_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{safe_name}.pdf"'},
     )
+
+
+# ─── Quote Invoices ───────────────────────────────────────────────────────────
+
+@router.get("/{company_id}/quotes/{quote_id}/invoices", response_model=list[QuoteInvoiceOut])
+async def list_quote_invoices(
+    company_id: int,
+    quote_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access),
+):
+    await _get_quote(quote_id, company_id, db)
+    stmt = select(QuoteInvoice).where(
+        QuoteInvoice.quote_id == quote_id,
+        QuoteInvoice.company_id == company_id,
+    ).order_by(QuoteInvoice.created_at.desc())
+    invoices = (await db.execute(stmt)).scalars().all()
+    return [QuoteInvoiceOut.model_validate(inv) for inv in invoices]
+
+
+@router.post("/{company_id}/quotes/{quote_id}/invoices", response_model=QuoteInvoiceOut, status_code=201)
+async def create_quote_invoice(
+    company_id: int,
+    quote_id: int,
+    body: QuoteInvoiceIn,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access),
+):
+    await _get_quote(quote_id, company_id, db)
+    inv = QuoteInvoice(company_id=company_id, quote_id=quote_id, **body.model_dump())
+    db.add(inv)
+    await db.commit()
+    await db.refresh(inv)
+    return QuoteInvoiceOut.model_validate(inv)
+
+
+@router.delete("/{company_id}/quotes/{quote_id}/invoices/{invoice_id}", status_code=204)
+async def delete_quote_invoice(
+    company_id: int,
+    quote_id: int,
+    invoice_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access),
+):
+    await _get_quote(quote_id, company_id, db)
+    stmt = select(QuoteInvoice).where(
+        QuoteInvoice.id == invoice_id,
+        QuoteInvoice.quote_id == quote_id,
+        QuoteInvoice.company_id == company_id,
+    )
+    inv = (await db.execute(stmt)).scalar_one_or_none()
+    if not inv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Faktura nenalezena.")
+    await db.delete(inv)
+    await db.commit()

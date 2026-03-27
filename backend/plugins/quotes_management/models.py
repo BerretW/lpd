@@ -103,3 +103,26 @@ class QuoteCategoryAssembly(Base):
     vat_rate: Mapped[float] = mapped_column(Float, default=21.0)
 
     quote: Mapped["Quote"] = relationship(back_populates="category_assemblies")
+
+
+class QuoteInvoice(Base):
+    """Faktura vygenerovaná z nabídky – uložený záznam pro evidenci."""
+    __tablename__ = "plugin_quote_invoices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("plugin_quotes.id", ondelete="CASCADE"), index=True)
+
+    invoice_number: Mapped[str] = mapped_column(String(100))
+    issue_date: Mapped[str] = mapped_column(String(10))   # YYYY-MM-DD
+    duzp: Mapped[str] = mapped_column(String(10))         # datum uskutečnění zdanitelného plnění
+    due_date: Mapped[str] = mapped_column(String(10))     # YYYY-MM-DD
+    variable_symbol: Mapped[str] = mapped_column(String(50))
+    payment_method: Mapped[str] = mapped_column(String(50), default="převodem")
+    note: Mapped[Optional[str]] = mapped_column(Text)
+
+    total_net: Mapped[float] = mapped_column(Float)
+    total_vat: Mapped[float] = mapped_column(Float)
+    total_gross: Mapped[float] = mapped_column(Float)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
