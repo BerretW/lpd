@@ -3,13 +3,23 @@ import { VatSettings, WorkOrderOut, Company, BillingReportOut, BillingReportItem
 import Icon from './common/Icon';
 import * as api from '../api';
 
+export interface InvoiceMeta {
+    invoice_number: string;
+    issue_date: string;
+    duzp: string;
+    due_date: string;
+    variable_symbol: string;
+    payment_method: string;
+    note: string;
+}
+
 interface InvoiceProps {
     workOrder: WorkOrderOut;
     billingReport: BillingReportOut | null;
     company: Company | null;
     vatSettings: VatSettings;
     onClose: () => void;
-    onMarkAsBilled?: (totals: { net: number; vat: number; gross: number }) => void;
+    onMarkAsBilled?: (totals: { net: number; vat: number; gross: number }, meta: InvoiceMeta) => void;
 }
 
 interface EditableTimeLog {
@@ -22,11 +32,26 @@ interface EditableTimeLog {
 }
 
 const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, vatSettings, onClose, onMarkAsBilled }) => {
-    
+
     const [editableLabor, setEditableLabor] = useState<EditableTimeLog[]>([]);
     const [editableMaterial, setEditableMaterial] = useState<BillingReportItem[]>([]);
-    const[globalModifier, setGlobalModifier] = useState<number>(0);
+    const [globalModifier, setGlobalModifier] = useState<number>(0);
     const [isExporting, setIsExporting] = useState(false);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultDueDate = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+    const year = new Date().getFullYear();
+    const [meta, setMeta] = useState<InvoiceMeta>({
+        invoice_number: `ZAK${workOrder.id}-${year}`,
+        issue_date: today,
+        duzp: today,
+        due_date: defaultDueDate,
+        variable_symbol: `${workOrder.id}${year}`,
+        payment_method: 'převodem',
+        note: '',
+    });
+    const setMetaField = (field: keyof InvoiceMeta, value: string) =>
+        setMeta(prev => ({ ...prev, [field]: value }));
 
     useEffect(() => {
         if (billingReport) {
@@ -142,7 +167,46 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
     const renderInvoiceBody = () => {
         if(!billingReport) return <div className="text-center p-16">Chybí data.</div>;
 
+        const metaField = (label: string, field: keyof InvoiceMeta, type = 'text') => (
+            <div>
+                <label className="block text-xs text-slate-500 mb-0.5">{label}</label>
+                <input
+                    type={type}
+                    value={meta[field]}
+                    onChange={e => setMetaField(field, e.target.value)}
+                    className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 no-print"
+                />
+                <span className="print-only text-sm">{meta[field]}</span>
+            </div>
+        );
+
         return (
+            <>
+            {/* Panel metadat — pouze v editačním režimu */}
+            <div className="no-print bg-white rounded-lg shadow p-4 mb-4 mx-auto" style={{width: '210mm'}}>
+                <h3 className="text-sm font-bold text-slate-600 uppercase mb-3 flex items-center gap-2">
+                    <Icon name="fa-file-invoice" /> Údaje faktury
+                </h3>
+                <div className="grid grid-cols-3 gap-3">
+                    {metaField('Číslo faktury', 'invoice_number')}
+                    {metaField('Variabilní symbol', 'variable_symbol')}
+                    {metaField('Způsob úhrady', 'payment_method')}
+                    {metaField('Datum vystavení', 'issue_date', 'date')}
+                    {metaField('DUZP', 'duzp', 'date')}
+                    {metaField('Datum splatnosti', 'due_date', 'date')}
+                </div>
+                <div className="mt-3">
+                    <label className="block text-xs text-slate-500 mb-0.5">Poznámka</label>
+                    <input
+                        type="text"
+                        value={meta.note}
+                        onChange={e => setMetaField('note', e.target.value)}
+                        placeholder="Volitelná poznámka na faktuře"
+                        className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                </div>
+            </div>
+
              <div id="invoice-print-area" className="p-8 bg-white shadow-lg mx-auto text-slate-900" style={{width: '210mm', minHeight: '297mm'}}>
                 <div className="flex justify-between items-start mb-8">
                     <div>
@@ -154,8 +218,12 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                         )}
                     </div>
                     <div className="text-right text-sm">
-                        <p className="font-bold">Variabilní symbol: {workOrder.id}{new Date().getFullYear()}</p>
-                        <p>Datum vystavení: {new Date().toLocaleDateString('cs-CZ')}</p>
+                        <p className="font-bold">Variabilní symbol: {meta.variable_symbol}</p>
+                        <p>Datum vystavení: {new Date(meta.issue_date).toLocaleDateString('cs-CZ')}</p>
+                        <p>Datum splatnosti: {new Date(meta.due_date).toLocaleDateString('cs-CZ')}</p>
+                        <p>DUZP: {new Date(meta.duzp).toLocaleDateString('cs-CZ')}</p>
+                        <p>Způsob úhrady: {meta.payment_method}</p>
+                        <p className="font-mono font-bold mt-1">{meta.invoice_number}</p>
                     </div>
                 </div>
 
@@ -304,10 +372,16 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                     </div>
                 </div>
                 
+                {meta.note && (
+                    <div className="mt-6 text-xs text-slate-600">
+                        <span className="font-bold">Poznámka: </span>{meta.note}
+                    </div>
+                )}
                 <div className="mt-12 pt-8 border-t border-slate-200 text-center text-xs text-slate-400">
                     <p>Faktura vygenerována systémem LPD Worker OS</p>
                 </div>
             </div>
+            </>
         );
     }
 
@@ -338,7 +412,7 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                                     net: laborTotalAdjusted + materialTotalAdjusted,
                                     vat: laborVat + materialVat,
                                     gross: grandTotal,
-                                })}
+                                }, meta)}
                                 className="mr-4 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 rounded-md transition-colors"
                             >
                                 <Icon name="fa-check-circle" className="mr-2"/> Označit jako fakturované
