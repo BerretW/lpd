@@ -18,6 +18,7 @@ export enum View {
     Planning = 'Planning',
     Fleet = 'Fleet',
     Objects = 'Objects',
+    Invoices = 'Invoices',
 }
 
 export enum WorkTypeName {

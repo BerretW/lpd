@@ -125,4 +125,6 @@ class QuoteInvoice(Base):
     total_vat: Mapped[float] = mapped_column(Float)
     total_gross: Mapped[float] = mapped_column(Float)
 
+    status: Mapped[str] = mapped_column(String(30), default="issued")  # issued, sent, accepted, paid, overdue, cancelled
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

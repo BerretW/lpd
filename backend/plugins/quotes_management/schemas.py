@@ -192,5 +192,6 @@ class QuoteInvoiceOut(BaseModel):
     total_net: float
     total_vat: float
     total_gross: float
+    status: str = "issued"
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)

@@ -25,6 +25,7 @@ from plugins import fleet_management
 from plugins import inventory_wipe
 from plugins import objects_management
 from plugins import quotes_management
+from plugins import invoices_management
 
 # Importy všech API routerů
 from app.routers import (
@@ -118,6 +119,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE plugin_quotes ADD COLUMN IF NOT EXISTS parent_quote_id INTEGER REFERENCES plugin_quotes(id) ON DELETE SET NULL",
             "ALTER TABLE plugin_quotes ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE plugin_quote_category_assemblies ADD COLUMN IF NOT EXISTS vat_rate FLOAT NOT NULL DEFAULT 21.0",
+            "ALTER TABLE plugin_quote_invoices ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'issued'",
             # service_reports tabulka se vytvoří přes create_all, tady jen pro jistotu indexy
         ]
         for sql in _migrations:
@@ -145,6 +147,7 @@ async def lifespan(app: FastAPI):
     pm.register_plugin(inventory_wipe)
     pm.register_plugin(objects_management)
     pm.register_plugin(quotes_management)
+    pm.register_plugin(invoices_management)
     
     # Spuštění staré logiky triggerů na pozadí
     asyncio.create_task(periodic_trigger_check())

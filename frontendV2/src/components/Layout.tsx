@@ -145,6 +145,7 @@ const SidebarContent: React.FC<{
           <NavItem isCollapsed={isCollapsed} view={View.Inventory} label={t('navigation.inventory')} icon="fa-warehouse" currentView={currentView} setCurrentView={setCurrentView} onNavigate={onNavigate} />
           <NavItem isCollapsed={isCollapsed} view={View.Fleet} label="Vozový park" icon="fa-car" currentView={currentView} setCurrentView={setCurrentView} onNavigate={onNavigate} />
           <NavItem isCollapsed={isCollapsed} view={View.Objects} label="Objekty" icon="fa-building" currentView={currentView} setCurrentView={setCurrentView} onNavigate={onNavigate} />
+          <NavItem isCollapsed={isCollapsed} view={View.Invoices} label="Faktury" icon="fa-file-invoice" currentView={currentView} setCurrentView={setCurrentView} onNavigate={onNavigate} />
           <NavItem isCollapsed={isCollapsed} view={View.PickingOrders} label={t('navigation.pickingOrders')} icon="fa-people-carry" currentView={currentView} setCurrentView={setCurrentView} onNavigate={onNavigate} />
           <NavItem isCollapsed={isCollapsed} view={View.Planning} label={t('navigation.planning')} icon="fa-calendar-check" currentView={currentView} setCurrentView={setCurrentView} onNavigate={onNavigate} />
           {isAdmin && (

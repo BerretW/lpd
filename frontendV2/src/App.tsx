@@ -12,6 +12,7 @@ import { useI18n } from './I18nContext';
 import PickingOrders from './components/PickingOrders';
 import FleetPlugin from './components/plugins/FleetPlugin';
 import ObjectsPlugin from './components/plugins/ObjectsPlugin';
+import InvoicesPlugin from './components/plugins/InvoicesPlugin';
 const App: React.FC = () => {
     const { isAuthenticated, user, role, companyId, logout } = useAuth();
     const [currentView, setCurrentView] = useState<View>(View.Dashboard);
@@ -52,6 +53,8 @@ const App: React.FC = () => {
                 return <FleetPlugin companyId={companyId} />;
             case View.Objects:
                 return <ObjectsPlugin companyId={companyId} onOpenWorkOrder={(id: number) => { setPendingWorkOrderId(id); setCurrentView(View.Jobs); }} />;
+            case View.Invoices:
+                return <InvoicesPlugin companyId={companyId} />;
             case View.Admin:
                 if (isAdmin) {
                     return <Admin companyId={companyId} />;
