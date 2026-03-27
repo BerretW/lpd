@@ -129,11 +129,18 @@ export function printQuotePdf(quote: Quote, companyName: string, quoteRef?: stri
     const createdDate = new Date(quote.created_at).toLocaleDateString('cs-CZ');
     const validUntil = new Date(new Date(quote.created_at).getTime() + quote.validity_days * 86400000).toLocaleDateString('cs-CZ');
 
+    const catRateMap = new Map(quote.category_assemblies.map(ca => [ca.category_name, ca.vat_rate]));
+    const itemVatRate = (item: { inventory_category_name?: string }) =>
+        item.inventory_category_name
+            ? (catRateMap.get(item.inventory_category_name) ?? quote.vat_rate)
+            : quote.vat_rate;
+
     const sectionRows = (sections: typeof regularSections, isExtras: boolean) => sections.map(sec => {
         const secTotal = sec.items.reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
         const itemRows = sec.items.map((item, idx) => {
             const total = item.quantity * (item.material_price + item.assembly_price);
             const bg = item.is_reduced_work ? '#FFFF99' : idx % 2 === 0 ? '#fff' : '#f8f8f8';
+            const vatRate = itemVatRate(item);
             return `<tr style="background:${bg}">
                 <td style="padding:3px 5px;color:#999;font-size:10px">${sec.prefix || ''}</td>
                 <td style="padding:3px 5px;font-size:10px${item.is_reduced_work ? ';text-decoration:line-through;color:#888' : ''}">${item.name}</td>
@@ -142,17 +149,18 @@ export function printQuotePdf(quote: Quote, companyName: string, quoteRef?: stri
                 <td style="padding:3px 5px;text-align:right;font-size:10px">${fmtP(item.material_price)}</td>
                 <td style="padding:3px 5px;text-align:right;font-size:10px">${fmtP(item.assembly_price)}</td>
                 <td style="padding:3px 5px;text-align:right;font-size:10px">${fmtP(item.material_price + item.assembly_price)}</td>
+                <td style="padding:3px 5px;text-align:center;font-size:10px;color:#555">${vatRate}%</td>
                 <td style="padding:3px 5px;text-align:right;font-size:10px;font-weight:600${item.is_reduced_work ? ';color:#996600' : ''}">${item.is_reduced_work ? '−' : ''}${fmtP(total)}</td>
             </tr>`;
         }).join('');
         return `
             <tr style="background:#eee">
                 <td style="padding:4px 5px;font-weight:700;font-size:10px">${sec.prefix || ''}</td>
-                <td colspan="7" style="padding:4px 5px;font-weight:700;font-size:10px">${isExtras ? '[VÍCEPRÁCE] ' : ''}${sec.name}</td>
+                <td colspan="8" style="padding:4px 5px;font-weight:700;font-size:10px">${isExtras ? '[VÍCEPRÁCE] ' : ''}${sec.name}</td>
             </tr>
             ${itemRows}
             <tr style="background:#ddd">
-                <td colspan="7" style="padding:4px 5px;text-align:right;font-weight:700;font-size:10px">${sec.name} celkem:</td>
+                <td colspan="8" style="padding:4px 5px;text-align:right;font-weight:700;font-size:10px">${sec.name} celkem:</td>
                 <td style="padding:4px 5px;text-align:right;font-weight:700;color:#cc0000;font-size:10px">${fmtP(secTotal)}</td>
             </tr>`;
     }).join('');
@@ -202,6 +210,7 @@ export function printQuotePdf(quote: Quote, companyName: string, quoteRef?: stri
             <th style="width:80px">Materiál</th>
             <th style="width:80px">Montáž</th>
             <th style="width:80px">Cena/ks</th>
+            <th style="width:42px;text-align:center">DPH</th>
             <th style="width:90px">Cena celkem</th>
         </tr></thead>
         <tbody>
