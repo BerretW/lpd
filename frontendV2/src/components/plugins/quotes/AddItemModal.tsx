@@ -66,10 +66,27 @@ const AddItemModal: React.FC<{
                         </div>
                         <div>
                             <label className="block text-xs font-medium text-slate-600 mb-1">Kategorie (montáž)</label>
-                            <input className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                            <select
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 text-slate-700"
                                 value={form.inventory_category_name ?? ''}
-                                onChange={e => set('inventory_category_name', e.target.value)}
-                                placeholder="Kategorie…" />
+                                onChange={e => {
+                                    const catName = e.target.value || undefined;
+                                    const ca = catName ? categoryAssemblies.find(c => c.category_name === catName) : undefined;
+                                    set('inventory_category_name', catName);
+                                    if (ca) set('assembly_price', ca.assembly_price_per_unit);
+                                }}>
+                                <option value="">Bez kategorie</option>
+                                {categoryAssemblies.map(ca => (
+                                    <option key={ca.id} value={ca.category_name}>
+                                        {ca.category_name} — {fmtPrice(ca.assembly_price_per_unit)}/ks
+                                    </option>
+                                ))}
+                                {form.inventory_category_name && !categoryAssemblies.find(c => c.category_name === form.inventory_category_name) && (
+                                    <option value={form.inventory_category_name}>
+                                        {form.inventory_category_name} (nová sazba)
+                                    </option>
+                                )}
+                            </select>
                         </div>
                     </div>
 
@@ -115,7 +132,7 @@ const AddItemModal: React.FC<{
                     </Button>
                 </div>
             </Modal>
-            {showPicker && <InventoryPicker companyId={companyId} onSelect={handleSelectInventory} onClose={() => setShowPicker(false)} />}
+            {showPicker && <InventoryPicker companyId={companyId} categoryAssemblies={categoryAssemblies} onSelect={handleSelectInventory} onClose={() => setShowPicker(false)} />}
         </>
     );
 };

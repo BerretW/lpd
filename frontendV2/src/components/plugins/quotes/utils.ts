@@ -50,6 +50,57 @@ export const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 export const fmtPrice = (v: number) =>
     v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
 
+/**
+ * Vypočítá DPH rozdělené po sazbách.
+ * - Materiál každé položky se zdaní globální sazbou quote.vat_rate.
+ * - Montáž se zdaní sazbou dle kategorie (CategoryAssembly.vat_rate),
+ *   pokud kategorie není nastavena, použije se globální sazba.
+ * - Sleva se aplikuje proporcionálně na položky regulárních sekcí.
+ * - Méněpráce se z DPH vyloučí.
+ */
+export function computeVatBreakdown(quote: Quote): { rate: number; base: number; vat: number }[] {
+    const catRateMap = new Map(quote.category_assemblies.map(ca => [ca.category_name, ca.vat_rate]));
+
+    const regularItems = quote.sections.filter(s => !s.is_extras).flatMap(s => s.items);
+    const extrasItems  = quote.sections.filter(s =>  s.is_extras).flatMap(s => s.items);
+
+    const subtotal = regularItems
+        .filter(i => !i.is_reduced_work)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+
+    let discountAmount = 0;
+    if (quote.global_discount > 0) {
+        discountAmount = quote.global_discount_type === 'percent'
+            ? subtotal * quote.global_discount / 100
+            : Math.min(quote.global_discount, subtotal);
+    }
+    const discountRatio = subtotal > 0 ? discountAmount / subtotal : 0;
+
+    const groups = new Map<number, number>();
+    const add = (rate: number, amount: number) =>
+        groups.set(rate, (groups.get(rate) ?? 0) + amount);
+
+    // Sazba DPH pro celou položku — kategorie přebíjí globální sazbu pro materiál i montáž
+    const itemRate = (item: { inventory_category_name?: string }) =>
+        item.inventory_category_name
+            ? (catRateMap.get(item.inventory_category_name) ?? quote.vat_rate)
+            : quote.vat_rate;
+
+    for (const i of regularItems.filter(x => !x.is_reduced_work)) {
+        const f = 1 - discountRatio;
+        const rate = itemRate(i);
+        add(rate, i.quantity * (i.material_price + i.assembly_price) * f);
+    }
+    for (const i of extrasItems) {
+        add(itemRate(i), i.quantity * (i.material_price + i.assembly_price));
+    }
+
+    return Array.from(groups.entries())
+        .filter(([, base]) => base > 0)
+        .map(([rate, base]) => ({ rate, base, vat: base * rate / 100 }))
+        .sort((a, b) => a.rate - b.rate);
+}
+
 export function printQuotePdf(quote: Quote, companyName: string, quoteRef?: string) {
     const fmtP = (v: number) =>
         v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
@@ -71,8 +122,9 @@ export function printQuotePdf(quote: Quote, companyName: string, quoteRef?: stri
             : quote.global_discount;
     }
     const net = subtotal - discountAmount - reducedTotal + extrasTotal;
-    const vat = net * quote.vat_rate / 100;
-    const gross = net + vat;
+    const vatBreakdown = computeVatBreakdown(quote);
+    const totalVat = vatBreakdown.reduce((s, g) => s + g.vat, 0);
+    const gross = net + totalVat;
 
     const createdDate = new Date(quote.created_at).toLocaleDateString('cs-CZ');
     const validUntil = new Date(new Date(quote.created_at).getTime() + quote.validity_days * 86400000).toLocaleDateString('cs-CZ');
@@ -165,7 +217,7 @@ export function printQuotePdf(quote: Quote, companyName: string, quoteRef?: stri
         ${discountAmount > 0 ? `<tr style="color:#006600"><td class="lbl">Sleva (${quote.global_discount}${quote.global_discount_type === 'percent' ? '%' : ' Kč'}):</td><td>− ${fmtP(discountAmount)}</td></tr>` : ''}
         ${extrasTotal > 0 ? `<tr style="color:#cc0000;font-weight:700"><td class="lbl">Vícepráce:</td><td>+ ${fmtP(extrasTotal)}</td></tr>` : ''}
         <tr style="border-top:1px solid #333;font-weight:700"><td class="lbl">DODÁVKA A MONTÁŽ CELKEM BEZ DPH:</td><td>${fmtP(net)}</td></tr>
-        <tr><td class="lbl">DPH ${quote.vat_rate}%:</td><td>${fmtP(vat)}</td></tr>
+        ${vatBreakdown.map(g => `<tr><td class="lbl">DPH ${g.rate}% (základ ${fmtP(g.base)}):</td><td>${fmtP(g.vat)}</td></tr>`).join('')}
         <tr style="border-top:2px solid #cc0000;font-size:13px;font-weight:700;color:#cc0000"><td class="lbl">DODÁVKA CELKEM S DPH:</td><td>${fmtP(gross)}</td></tr>
     </table>
     ${quote.notes ? `<br><div style="font-size:10px"><b>Poznámky:</b><br>${quote.notes}</div>` : ''}

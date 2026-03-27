@@ -1,14 +1,17 @@
 import React from 'react';
 import { Quote } from './types';
-import { fmtPrice } from './utils';
+import { fmtPrice, computeVatBreakdown } from './utils';
 
 const SummaryBar: React.FC<{ quote: Quote }> = ({ quote }) => {
     const regularItems = quote.sections.filter(s => !s.is_extras).flatMap(s => s.items);
-    const extrasItems = quote.sections.filter(s => s.is_extras).flatMap(s => s.items);
+    const extrasItems  = quote.sections.filter(s =>  s.is_extras).flatMap(s => s.items);
 
-    const subtotal = regularItems.filter(i => !i.is_reduced_work).reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
-    const reducedTotal = regularItems.filter(i => i.is_reduced_work).reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
-    const extrasTotal = extrasItems.reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const subtotal = regularItems.filter(i => !i.is_reduced_work)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const reducedTotal = regularItems.filter(i => i.is_reduced_work)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const extrasTotal = extrasItems
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
 
     let discountAmount = 0;
     if (quote.global_discount > 0) {
@@ -18,8 +21,9 @@ const SummaryBar: React.FC<{ quote: Quote }> = ({ quote }) => {
     }
 
     const net = subtotal - discountAmount - reducedTotal + extrasTotal;
-    const vat = net * quote.vat_rate / 100;
-    const gross = net + vat;
+    const vatBreakdown = computeVatBreakdown(quote);
+    const totalVat = vatBreakdown.reduce((s, g) => s + g.vat, 0);
+    const gross = net + totalVat;
 
     return (
         <div className="bg-slate-800 text-white rounded-xl px-5 py-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
@@ -45,10 +49,12 @@ const SummaryBar: React.FC<{ quote: Quote }> = ({ quote }) => {
                     <p className="font-semibold text-orange-300">+ {fmtPrice(extrasTotal)}</p>
                 </div>
             )}
-            <div>
-                <span className="text-slate-400 text-xs">DPH {quote.vat_rate}%</span>
-                <p className="font-semibold">{fmtPrice(vat)}</p>
-            </div>
+            {vatBreakdown.map(g => (
+                <div key={g.rate}>
+                    <span className="text-slate-400 text-xs">DPH {g.rate}%</span>
+                    <p className="font-semibold">{fmtPrice(g.vat)}</p>
+                </div>
+            ))}
             <div className="ml-auto">
                 <span className="text-slate-400 text-xs">CELKEM S DPH</span>
                 <p className="text-xl font-bold text-red-400">{fmtPrice(gross)}</p>
