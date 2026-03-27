@@ -128,6 +128,74 @@ async def update_quote(
     return await _build_quote_out(q, db)
 
 
+@router.post("/{company_id}/quotes/{quote_id}/new-version", response_model=QuoteOut, status_code=201)
+async def new_version_quote(
+    company_id: int,
+    quote_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_company_access),
+):
+    """Vytvoří novou verzi nabídky — hluboká kopie všech sekcí, položek a sazeb."""
+    src = await _get_quote(quote_id, company_id, db)
+
+    new_q = Quote(
+        company_id=src.company_id,
+        site_id=src.site_id,
+        parent_quote_id=src.parent_quote_id,
+        name=src.name,
+        version=src.version + 1,
+        status="draft",
+        customer_id=src.customer_id,
+        prepared_by=src.prepared_by,
+        prepared_by_phone=src.prepared_by_phone,
+        validity_days=src.validity_days,
+        currency=src.currency,
+        vat_rate=src.vat_rate,
+        global_discount=src.global_discount,
+        global_discount_type=src.global_discount_type,
+        global_hourly_rate=src.global_hourly_rate,
+        notes=src.notes,
+    )
+    db.add(new_q)
+    await db.flush()
+
+    for sec in src.sections:
+        new_sec = QuoteSection(
+            quote_id=new_q.id,
+            name=sec.name,
+            prefix=sec.prefix,
+            sort_order=sec.sort_order,
+            is_extras=sec.is_extras,
+        )
+        db.add(new_sec)
+        await db.flush()
+        for item in sec.items:
+            db.add(QuoteItem(
+                section_id=new_sec.id,
+                name=item.name,
+                unit=item.unit,
+                quantity=item.quantity,
+                material_price=item.material_price,
+                assembly_price=item.assembly_price,
+                inventory_item_id=item.inventory_item_id,
+                inventory_category_name=item.inventory_category_name,
+                sort_order=item.sort_order,
+                is_reduced_work=item.is_reduced_work,
+            ))
+
+    for ca in src.category_assemblies:
+        db.add(QuoteCategoryAssembly(
+            quote_id=new_q.id,
+            category_name=ca.category_name,
+            assembly_price_per_unit=ca.assembly_price_per_unit,
+            vat_rate=ca.vat_rate,
+        ))
+
+    await db.commit()
+    await db.refresh(new_q)
+    return await _build_quote_out(new_q, db)
+
+
 @router.delete("/{company_id}/quotes/{quote_id}", status_code=204)
 async def delete_quote(
     company_id: int,

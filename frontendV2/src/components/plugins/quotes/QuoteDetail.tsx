@@ -20,6 +20,7 @@ const QuoteDetail: React.FC<{
 }> = ({ quoteId, companyId, siteTechTypes, onBack, onOpenQuote }) => {
     const [quote, setQuote] = useState<Quote | null>(null);
     const [parentQuote, setParentQuote] = useState<Quote | null>(null);
+    const [siblings, setSiblings] = useState<{ id: number; version: number; status: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<string>('cenotvorba');
     const [showAddSection, setShowAddSection] = useState(false);
@@ -35,6 +36,13 @@ const QuoteDetail: React.FC<{
             } else {
                 setParentQuote(null);
             }
+            // Načti sourozence (stejné jméno + zákazník) pro přepínač verzí
+            const all = await quotesApi.listQuotes(companyId, q.site_id ?? undefined);
+            const family = all
+                .filter((x: any) => x.name === q.name && x.customer_id === q.customer_id)
+                .map((x: any) => ({ id: x.id, version: x.version, status: x.status }))
+                .sort((a: any, b: any) => b.version - a.version);
+            setSiblings(family);
         } catch (err) { console.error(err); }
     }, [companyId, quoteId]);
 
@@ -78,6 +86,15 @@ const QuoteDetail: React.FC<{
         try {
             await quotesApi.updateQuote(companyId, quoteId, { status });
             await refresh();
+        } catch (err) { console.error(err); }
+    };
+
+    const handleNewVersion = async () => {
+        if (!quote) return;
+        if (!window.confirm(`Vytvořit verzi ${quote.version + 1} nabídky "${quote.name}"?\nStávající verze zůstane zachována.`)) return;
+        try {
+            const newQ = await quotesApi.newVersionQuote(companyId, quote.id);
+            onOpenQuote?.(newQ.id);
         } catch (err) { console.error(err); }
     };
 
@@ -141,12 +158,35 @@ const QuoteDetail: React.FC<{
                     </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                    {/* Přepínač verzí */}
+                    {siblings.length > 1 && (
+                        <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                            {siblings.map(s => {
+                                const si = STATUS_LABELS[s.status] ?? STATUS_LABELS.draft;
+                                return (
+                                    <button
+                                        key={s.id}
+                                        onClick={() => onOpenQuote?.(s.id)}
+                                        title={si.label}
+                                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors
+                                            ${s.id === quote.id
+                                                ? 'bg-white shadow text-slate-800'
+                                                : 'text-slate-400 hover:text-slate-600'}`}>
+                                        v{s.version}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                     <select
                         value={quote.status}
                         onChange={e => handleStatusChange(e.target.value)}
                         className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
                         {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                     </select>
+                    <Button variant="secondary" onClick={handleNewVersion} title="Vytvořit novou verzi nabídky jako kopii">
+                        <Icon name="fa-copy" className="mr-1" />Nová verze
+                    </Button>
                     <Button onClick={handleExportPdf}>
                         <><Icon name="fa-file-pdf" className="mr-2" />Export PDF</>
                     </Button>

@@ -19,6 +19,9 @@ export const updateQuote = (cid: number, quoteId: number, data: any): Promise<an
 export const deleteQuote = (cid: number, quoteId: number): Promise<void> =>
     fetchApi(`/plugins/quotes/${cid}/quotes/${quoteId}`, { method: 'DELETE' });
 
+export const newVersionQuote = (cid: number, quoteId: number): Promise<any> =>
+    fetchApi(`/plugins/quotes/${cid}/quotes/${quoteId}/new-version`, { method: 'POST' });
+
 // ─── Sections ─────────────────────────────────────────────────────────────────
 
 export const createSection = (cid: number, quoteId: number, data: any): Promise<any> =>
