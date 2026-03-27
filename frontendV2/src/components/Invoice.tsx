@@ -9,7 +9,7 @@ interface InvoiceProps {
     company: Company | null;
     vatSettings: VatSettings;
     onClose: () => void;
-    onMarkAsBilled?: () => void;
+    onMarkAsBilled?: (totals: { net: number; vat: number; gross: number }) => void;
 }
 
 interface EditableTimeLog {
@@ -333,7 +333,14 @@ const Invoice: React.FC<InvoiceProps> = ({ workOrder, billingReport, company, va
                         </button>
 
                          {onMarkAsBilled && (
-                            <button onClick={onMarkAsBilled} className="mr-4 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 rounded-md transition-colors">
+                            <button
+                                onClick={() => onMarkAsBilled({
+                                    net: laborTotalAdjusted + materialTotalAdjusted,
+                                    vat: laborVat + materialVat,
+                                    gross: grandTotal,
+                                })}
+                                className="mr-4 px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 rounded-md transition-colors"
+                            >
                                 <Icon name="fa-check-circle" className="mr-2"/> Označit jako fakturované
                             </button>
                         )}

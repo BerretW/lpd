@@ -82,8 +82,8 @@ async def create_default_user():
 
                 # 2. Vytvoření první společnosti
                 new_company = Company(
-                    name="Hlavní Společnost",
-                    slug="hlavni-spolecnost"
+                    name="LP Dvoracek s.r.o.",
+                    slug="LP Dvoracek s.r.o."
                 )
                 session.add(new_company)
                 await session.flush()
@@ -120,6 +120,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE plugin_quotes ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE plugin_quote_category_assemblies ADD COLUMN IF NOT EXISTS vat_rate FLOAT NOT NULL DEFAULT 21.0",
             "ALTER TABLE plugin_quote_invoices ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'issued'",
+            "ALTER TABLE plugin_quote_invoices ADD COLUMN IF NOT EXISTS work_order_id INTEGER REFERENCES work_orders(id) ON DELETE CASCADE",
+            "ALTER TABLE plugin_quote_invoices ALTER COLUMN quote_id DROP NOT NULL",
             # service_reports tabulka se vytvoří přes create_all, tady jen pro jistotu indexy
         ]
         for sql in _migrations:

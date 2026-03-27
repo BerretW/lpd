@@ -1,10 +1,25 @@
 import { fetchApi } from './core';
 
+export interface WorkOrderInvoiceIn {
+    invoice_number: string;
+    issue_date: string;
+    duzp: string;
+    due_date: string;
+    variable_symbol: string;
+    payment_method: string;
+    note?: string;
+    total_net: number;
+    total_vat: number;
+    total_gross: number;
+}
+
 export interface InvoiceOut {
     id: number;
     company_id: number;
-    quote_id: number;
+    quote_id?: number;
     quote_name?: string;
+    work_order_id?: number;
+    work_order_name?: string;
     customer_id?: number;
     customer_name?: string;
     invoice_number: string;
@@ -46,4 +61,10 @@ export const updateInvoiceStatus = (cid: number, invoiceId: number, status: stri
     fetchApi(`/plugins/invoices/${cid}/${invoiceId}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status }),
+    });
+
+export const createWorkOrderInvoice = (cid: number, workOrderId: number, data: WorkOrderInvoiceIn): Promise<InvoiceOut> =>
+    fetchApi(`/plugins/invoices/${cid}/work-orders/${workOrderId}`, {
+        method: 'POST',
+        body: JSON.stringify(data),
     });

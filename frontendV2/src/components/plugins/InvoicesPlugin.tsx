@@ -57,6 +57,7 @@ const InvoicesPlugin: React.FC<InvoicesPluginProps> = ({ companyId }) => {
             return (
                 inv.invoice_number.toLowerCase().includes(q) ||
                 (inv.quote_name ?? '').toLowerCase().includes(q) ||
+                (inv.work_order_name ?? '').toLowerCase().includes(q) ||
                 (inv.customer_name ?? '').toLowerCase().includes(q)
             );
         }
@@ -126,7 +127,7 @@ const InvoicesPlugin: React.FC<InvoicesPluginProps> = ({ companyId }) => {
                         <thead className="bg-slate-50 text-slate-600 uppercase text-xs">
                             <tr>
                                 <th className="px-4 py-3 text-left">Číslo faktury</th>
-                                <th className="px-4 py-3 text-left">Nabídka</th>
+                                <th className="px-4 py-3 text-left">Zdroj</th>
                                 <th className="px-4 py-3 text-left">Zákazník</th>
                                 <th className="px-4 py-3 text-left">Vystaveno</th>
                                 <th className="px-4 py-3 text-left">Splatnost</th>
@@ -142,7 +143,11 @@ const InvoicesPlugin: React.FC<InvoicesPluginProps> = ({ companyId }) => {
                                         {inv.invoice_number}
                                     </td>
                                     <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">
-                                        {inv.quote_name ?? '—'}
+                                        {inv.quote_name
+                                            ? <span title="Nabídka">📄 {inv.quote_name}</span>
+                                            : inv.work_order_name
+                                            ? <span title="Zakázka">🔧 {inv.work_order_name}</span>
+                                            : '—'}
                                     </td>
                                     <td className="px-4 py-3 text-slate-600">
                                         {inv.customer_name ?? '—'}

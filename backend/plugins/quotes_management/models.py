@@ -106,12 +106,13 @@ class QuoteCategoryAssembly(Base):
 
 
 class QuoteInvoice(Base):
-    """Faktura vygenerovaná z nabídky – uložený záznam pro evidenci."""
+    """Faktura vygenerovaná z nabídky nebo zakázky – uložený záznam pro evidenci."""
     __tablename__ = "plugin_quote_invoices"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    quote_id: Mapped[int] = mapped_column(ForeignKey("plugin_quotes.id", ondelete="CASCADE"), index=True)
+    quote_id: Mapped[Optional[int]] = mapped_column(ForeignKey("plugin_quotes.id", ondelete="CASCADE"), index=True, nullable=True)
+    work_order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"), index=True, nullable=True)
 
     invoice_number: Mapped[str] = mapped_column(String(100))
     issue_date: Mapped[str] = mapped_column(String(10))   # YYYY-MM-DD

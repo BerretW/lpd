@@ -3,6 +3,7 @@ import Button from '../../common/Button';
 import Icon from '../../common/Icon';
 import * as api from '../../../api';
 import { getClients } from '../../../api/clients';
+import { getObjectSite } from '../../../api/objects';
 import { createQuoteInvoice } from '../../../api/quotes';
 import { Quote } from './types';
 import { InvoiceConfig, InvoiceCompany, InvoiceClient, printInvoicePdf, computeVatBreakdown, computeInvoiceNumber, computeVariableSymbol } from './utils';
@@ -40,9 +41,10 @@ const GenerateInvoiceModal: React.FC<Props> = ({ quote, companyId, onClose, onSa
     useEffect(() => {
         const load = async () => {
             try {
-                const [comp, clients] = await Promise.all([
+                const [comp, clients, site] = await Promise.all([
                     api.getCompany(companyId),
-                    quote.customer_id ? getClients(companyId) : Promise.resolve([]),
+                    getClients(companyId),
+                    quote.site_id ? getObjectSite(companyId, quote.site_id) : Promise.resolve(null),
                 ]);
                 setCompany({
                     name: comp.name,
@@ -53,8 +55,10 @@ const GenerateInvoiceModal: React.FC<Props> = ({ quote, companyId, onClose, onSa
                     bank_account: comp.bank_account,
                     iban: comp.iban,
                 });
-                const found = quote.customer_id
-                    ? (clients as any[]).find((c: any) => c.id === quote.customer_id)
+                // Zákazník: priorita má zákazník objektu (site), fallback na zákazníka nabídky
+                const effectiveCustomerId = site?.customer_id ?? quote.customer_id;
+                const found = effectiveCustomerId
+                    ? (clients as any[]).find((c: any) => c.id === effectiveCustomerId)
                     : null;
                 setClient(found
                     ? { name: found.name, legal_name: found.legal_name, address: found.address, ico: found.ico, dic: found.dic }
@@ -68,7 +72,7 @@ const GenerateInvoiceModal: React.FC<Props> = ({ quote, companyId, onClose, onSa
         };
         load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [companyId, quote.customer_id]);
+    }, [companyId, quote.site_id, quote.customer_id]);
 
     // sync due_date when issue_date changes
     const handleIssueDate = (v: string) => {

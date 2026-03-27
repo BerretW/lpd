@@ -11,6 +11,7 @@ import TaskForm from './TaskForm';
 import { useAuth } from '../AuthContext';
 import { useI18n } from '../I18nContext';
 import InvoiceConfigModal, { InvoiceConfig } from './InvoiceConfigModal';
+import { createWorkOrderInvoice } from '../api/invoices';
 import JobsList from './JobsList';
 import JobDetail from './JobDetail';
 
@@ -234,13 +235,28 @@ const Jobs: React.FC<JobsProps> = ({ companyId, initialWorkOrderId, onWorkOrderO
         }
     };
 
-    const handleMarkBilled = async () => {
+    const handleMarkBilled = async (totals: { net: number; vat: number; gross: number }) => {
         if (tasksToBill.length === 0 || !fullSelectedWO) return;
         setError(null);
         try {
             await Promise.all(tasksToBill.map((taskId: number) =>
                 api.updateTask(companyId, fullSelectedWO.id, taskId, { status: 'billed' })
             ));
+            // Uložit záznam faktury do pluginu
+            const today = new Date().toISOString().slice(0, 10);
+            const dueDate = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+            const year = new Date().getFullYear();
+            await createWorkOrderInvoice(companyId, fullSelectedWO.id, {
+                invoice_number: `ZAK${fullSelectedWO.id}-${year}`,
+                issue_date: today,
+                duzp: today,
+                due_date: dueDate,
+                variable_symbol: `${fullSelectedWO.id}${year}`,
+                payment_method: 'převodem',
+                total_net: totals.net,
+                total_vat: totals.vat,
+                total_gross: totals.gross,
+            });
             setIsInvoiceModalOpen(false);
             setConfiguredBillingReport(null);
             setTasksToBill([]);
