@@ -225,6 +225,47 @@ const Jobs: React.FC<JobsProps> = ({ companyId, initialWorkOrderId, onWorkOrderO
                 taskIdsToBill = fullSelectedWO.tasks.filter((task: TaskOut) => taskNamesInReport.has(task.name)).map((task: TaskOut) => task.id);
             }
 
+            // Přidat hodiny ze servisních listů, které nejsou záruční opravou
+            const billableReports = woServiceReports.filter(sr => sr.work_hours > 0 && !sr.is_warranty_repair);
+            const srToInclude = config.type === 'tasks' && config.selectedTaskIds
+                ? billableReports.filter(sr => sr.task_id != null && config.selectedTaskIds!.includes(sr.task_id))
+                : config.type === 'date' && (config.startDate || config.endDate)
+                ? billableReports.filter(sr => {
+                    if (config.startDate && sr.date < config.startDate) return false;
+                    if (config.endDate && sr.date > config.endDate) return false;
+                    return true;
+                })
+                : billableReports;
+
+            if (srToInclude.length > 0) {
+                // Výchozí sazba = průměr ze stávajících time logů (nebo 0 pokud žádné nejsou)
+                const rates = finalReport.time_logs.map((l: any) => l.rate).filter((r: number) => r > 0);
+                const defaultRate = rates.length > 0 ? rates.reduce((a: number, b: number) => a + b, 0) / rates.length : 0;
+
+                const srTimeLogs = srToInclude.map((sr: ServiceReportOut) => {
+                    const taskName = sr.task_name
+                        ?? fullSelectedWO.tasks.find((t: TaskOut) => t.id === sr.task_id)?.name
+                        ?? 'Bez úkolu';
+                    const workTypeName = sr.work_type.length > 0 ? sr.work_type.join(', ') : 'Servisní práce';
+                    return {
+                        work_type_name: `[Servisní list] ${workTypeName}`,
+                        task_name: taskName,
+                        hours: sr.work_hours,
+                        rate: defaultRate,
+                        total_price: sr.work_hours * defaultRate,
+                    };
+                });
+
+                const addedWork = srTimeLogs.reduce((s: number, l: any) => s + l.total_price, 0);
+                finalReport = {
+                    ...finalReport,
+                    time_logs: [...finalReport.time_logs, ...srTimeLogs],
+                    total_hours: finalReport.total_hours + srToInclude.reduce((s: number, sr: ServiceReportOut) => s + sr.work_hours, 0),
+                    total_price_work: finalReport.total_price_work + addedWork,
+                    grand_total: finalReport.grand_total + addedWork,
+                };
+            }
+
             setConfiguredBillingReport(finalReport);
             setTasksToBill(taskIdsToBill);
             setIsInvoiceConfigOpen(false);
