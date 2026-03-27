@@ -101,6 +101,194 @@ export function computeVatBreakdown(quote: Quote): { rate: number; base: number;
         .sort((a, b) => a.rate - b.rate);
 }
 
+export interface InvoiceConfig {
+    invoice_number: string;
+    issue_date: string;       // YYYY-MM-DD
+    duzp: string;             // datum uskutečnění zdanitelného plnění
+    due_date: string;         // YYYY-MM-DD
+    variable_symbol: string;
+    payment_method: string;   // 'převodem' | 'hotovost' | 'kartou'
+    note?: string;
+}
+
+export interface InvoiceCompany {
+    name: string;
+    legal_name?: string;
+    address?: string;
+    ico?: string;
+    dic?: string;
+    bank_account?: string;
+    iban?: string;
+}
+
+export interface InvoiceClient {
+    name: string;
+    legal_name?: string;
+    address?: string;
+    ico?: string;
+    dic?: string;
+}
+
+export function printInvoicePdf(
+    quote: Quote,
+    company: InvoiceCompany,
+    client: InvoiceClient,
+    cfg: InvoiceConfig,
+) {
+    const fmtP = (v: number) =>
+        v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
+
+    const regularSections = quote.sections.filter(s => !s.is_extras);
+    const extrasSections = quote.sections.filter(s => s.is_extras);
+
+    const catRateMap = new Map(quote.category_assemblies.map(ca => [ca.category_name, ca.vat_rate]));
+    const itemVatRate = (item: { inventory_category_name?: string }) =>
+        item.inventory_category_name
+            ? (catRateMap.get(item.inventory_category_name) ?? quote.vat_rate)
+            : quote.vat_rate;
+
+    const subtotal = regularSections.flatMap(s => s.items).filter(i => !i.is_reduced_work)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const reducedTotal = regularSections.flatMap(s => s.items).filter(i => i.is_reduced_work)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+    const extrasTotal = extrasSections.flatMap(s => s.items)
+        .reduce((s, i) => s + i.quantity * (i.material_price + i.assembly_price), 0);
+
+    let discountAmount = 0;
+    if (quote.global_discount > 0) {
+        discountAmount = quote.global_discount_type === 'percent'
+            ? subtotal * quote.global_discount / 100
+            : quote.global_discount;
+    }
+    const net = subtotal - discountAmount - reducedTotal + extrasTotal;
+    const vatBreakdown = computeVatBreakdown(quote);
+    const totalVat = vatBreakdown.reduce((s, g) => s + g.vat, 0);
+    const gross = net + totalVat;
+
+    const fmtDate = (d: string) => new Date(d).toLocaleDateString('cs-CZ');
+
+    const addrHtml = (addr?: string) =>
+        addr ? addr.replace(/\n/g, '<br>') : '';
+
+    const supplierBlock = `
+        <div style="font-weight:700;font-size:10px;margin-bottom:4px;text-transform:uppercase;color:#cc0000">Dodavatel</div>
+        <div style="font-weight:700;font-size:11px">${company.legal_name || company.name}</div>
+        ${company.address ? `<div style="font-size:9px;color:#555;margin-top:2px">${addrHtml(company.address)}</div>` : ''}
+        ${company.ico ? `<div style="font-size:9px;margin-top:4px">IČO: <b>${company.ico}</b></div>` : ''}
+        ${company.dic ? `<div style="font-size:9px">DIČ: <b>${company.dic}</b></div>` : ''}
+        ${company.bank_account ? `<div style="font-size:9px;margin-top:4px">Č. účtu: <b>${company.bank_account}</b></div>` : ''}
+        ${company.iban ? `<div style="font-size:9px">IBAN: <b>${company.iban}</b></div>` : ''}`;
+
+    const buyerBlock = `
+        <div style="font-weight:700;font-size:10px;margin-bottom:4px;text-transform:uppercase;color:#cc0000">Odběratel</div>
+        <div style="font-weight:700;font-size:11px">${client.legal_name || client.name}</div>
+        ${client.address ? `<div style="font-size:9px;color:#555;margin-top:2px">${addrHtml(client.address)}</div>` : ''}
+        ${client.ico ? `<div style="font-size:9px;margin-top:4px">IČO: <b>${client.ico}</b></div>` : ''}
+        ${client.dic ? `<div style="font-size:9px">DIČ: <b>${client.dic}</b></div>` : ''}`;
+
+    const sectionRows = (sections: typeof regularSections, isExtras: boolean) => sections.map(sec =>
+        sec.items.map((item, idx) => {
+            if (item.is_reduced_work) return '';
+            const unitPrice = item.material_price + item.assembly_price;
+            const total = item.quantity * unitPrice;
+            const vatRate = itemVatRate(item);
+            const bg = idx % 2 === 0 ? '#fff' : '#f8f8f8';
+            return `<tr style="background:${bg}">
+                <td style="padding:3px 6px;font-size:9px;color:#777">${isExtras ? '+' : (sec.prefix || '')}</td>
+                <td style="padding:3px 6px;font-size:9px">${item.name}</td>
+                <td style="padding:3px 6px;text-align:center;font-size:9px">${item.unit}</td>
+                <td style="padding:3px 6px;text-align:right;font-size:9px">${item.quantity}</td>
+                <td style="padding:3px 6px;text-align:right;font-size:9px">${fmtP(unitPrice)}</td>
+                <td style="padding:3px 6px;text-align:center;font-size:9px">${vatRate}%</td>
+                <td style="padding:3px 6px;text-align:right;font-size:9px;font-weight:600">${fmtP(total)}</td>
+            </tr>`;
+        }).join('')
+    ).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>Faktura ${cfg.invoice_number}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 15mm; font-size: 10px; color: #333; }
+        table { width: 100%; border-collapse: collapse; }
+        @media print { body { padding: 0; } @page { margin: 12mm; size: A4; } }
+        th { background: #1a1a1a; color: #fff; padding: 5px 6px; font-size: 9px; text-align: right; }
+        th:nth-child(1), th:nth-child(2) { text-align: left; }
+        .recap td { padding: 3px 6px; font-size: 10px; }
+        .recap .lbl { text-align: right; }
+        hr { border: none; border-top: 0.5px solid #ccc; margin: 8px 0; }
+    </style></head><body>
+
+    <!-- Hlavička -->
+    <table style="margin-bottom:8px"><tr>
+        <td style="font-size:13px;font-weight:700">${company.name}</td>
+        <td style="text-align:right">
+            <div style="font-size:22px;font-weight:900;color:#cc0000;letter-spacing:1px">FAKTURA</div>
+            <div style="font-size:10px;color:#555">daňový doklad</div>
+        </td>
+    </tr></table>
+    <div style="background:#1a1a1a;color:#fff;padding:6px 10px;font-weight:700;font-size:11px;margin-bottom:12px">
+        Č. faktury: ${cfg.invoice_number} &nbsp;·&nbsp; ${quote.name}
+    </div>
+
+    <!-- Strany + platební údaje -->
+    <table style="margin-bottom:14px"><tr style="vertical-align:top">
+        <td style="width:45%;padding-right:20px;border-right:1px solid #eee">${supplierBlock}</td>
+        <td style="width:10%"></td>
+        <td style="width:45%">${buyerBlock}</td>
+    </tr></table>
+
+    <table style="width:55%;margin-bottom:14px;font-size:9px">
+        <tr><td style="font-weight:700;width:160px;padding:2px 0">Datum vystavení:</td><td>${fmtDate(cfg.issue_date)}</td></tr>
+        <tr><td style="font-weight:700;padding:2px 0">DUZP:</td><td>${fmtDate(cfg.duzp)}</td></tr>
+        <tr><td style="font-weight:700;padding:2px 0">Datum splatnosti:</td><td><b>${fmtDate(cfg.due_date)}</b></td></tr>
+        <tr><td style="font-weight:700;padding:2px 0">Variabilní symbol:</td><td>${cfg.variable_symbol}</td></tr>
+        <tr><td style="font-weight:700;padding:2px 0">Způsob úhrady:</td><td>${cfg.payment_method}</td></tr>
+    </table>
+
+    <!-- Položky -->
+    <table>
+        <thead><tr>
+            <th style="width:32px;text-align:left"></th>
+            <th style="text-align:left">Popis</th>
+            <th style="width:36px;text-align:center">M.j.</th>
+            <th style="width:50px">Počet</th>
+            <th style="width:90px">Cena/ks bez DPH</th>
+            <th style="width:44px;text-align:center">DPH</th>
+            <th style="width:95px">Celkem bez DPH</th>
+        </tr></thead>
+        <tbody>
+            ${sectionRows(regularSections, false)}
+            ${extrasSections.length > 0 ? sectionRows(extrasSections, true) : ''}
+        </tbody>
+    </table>
+
+    <br>
+    <table class="recap" style="width:60%;margin-left:auto">
+        <tr><td class="lbl">Základ bez DPH:</td><td>${fmtP(subtotal)}</td></tr>
+        ${reducedTotal > 0 ? `<tr style="color:#996600"><td class="lbl">Méněpráce (odečteno):</td><td>− ${fmtP(reducedTotal)}</td></tr>` : ''}
+        ${discountAmount > 0 ? `<tr style="color:#006600"><td class="lbl">Sleva:</td><td>− ${fmtP(discountAmount)}</td></tr>` : ''}
+        ${extrasTotal > 0 ? `<tr style="color:#cc0000;font-weight:700"><td class="lbl">Vícepráce:</td><td>+ ${fmtP(extrasTotal)}</td></tr>` : ''}
+        <tr style="border-top:1px solid #ccc;font-weight:700"><td class="lbl">Základ DPH celkem:</td><td>${fmtP(net)}</td></tr>
+        ${vatBreakdown.map(g => `<tr><td class="lbl">DPH ${g.rate}% (základ ${fmtP(g.base)}):</td><td>${fmtP(g.vat)}</td></tr>`).join('')}
+        <tr style="border-top:2px solid #cc0000;font-size:13px;font-weight:700;color:#cc0000">
+            <td class="lbl">CELKEM K ÚHRADĚ:</td><td>${fmtP(gross)}</td>
+        </tr>
+    </table>
+
+    ${cfg.note ? `<br><div style="font-size:9px;border-top:1px solid #eee;padding-top:8px"><b>Poznámka:</b><br>${cfg.note}</div>` : ''}
+
+    <hr style="margin-top:24px">
+    <div style="text-align:center;font-size:8px;color:#999">${company.name} • www.lpdweb.cz • info@lpdweb.cz</div>
+    </body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700');
+    if (!w) { alert('Povolte vyskakovací okna pro tisk PDF.'); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 400);
+}
+
 export function printQuotePdf(quote: Quote, companyName: string, quoteRef?: string) {
     const fmtP = (v: number) =>
         v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';

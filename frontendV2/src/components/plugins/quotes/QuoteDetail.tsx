@@ -10,6 +10,7 @@ import SummaryBar from './SummaryBar';
 import CenotvorbaTab from './CenotvorbaTab';
 import SectionTab from './SectionTab';
 import AddSectionModal from './AddSectionModal';
+import GenerateInvoiceModal from './GenerateInvoiceModal';
 
 const QuoteDetail: React.FC<{
     quoteId: number;
@@ -25,6 +26,7 @@ const QuoteDetail: React.FC<{
     const [activeTab, setActiveTab] = useState<string>('cenotvorba');
     const [showAddSection, setShowAddSection] = useState(false);
     const [showAddExtras, setShowAddExtras] = useState(false);
+    const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
     const refresh = useCallback(async () => {
         try {
@@ -187,6 +189,9 @@ const QuoteDetail: React.FC<{
                     <Button variant="secondary" onClick={handleNewVersion} title="Vytvořit novou verzi nabídky jako kopii">
                         <Icon name="fa-copy" className="mr-1" />Nová verze
                     </Button>
+                    <Button variant="secondary" onClick={() => setShowInvoiceModal(true)}>
+                        <Icon name="fa-file-invoice" className="mr-2" />Generovat fakturu
+                    </Button>
                     <Button onClick={handleExportPdf}>
                         <><Icon name="fa-file-pdf" className="mr-2" />Export PDF</>
                     </Button>
@@ -273,6 +278,13 @@ const QuoteDetail: React.FC<{
 
             {showAddSection && <AddSectionModal onSave={handleAddSection} onClose={() => setShowAddSection(false)} suggestedNames={siteTechTypes} />}
             {showAddExtras && <AddSectionModal onSave={handleAddSection} onClose={() => setShowAddExtras(false)} isExtras suggestedNames={siteTechTypes} />}
+            {showInvoiceModal && (
+                <GenerateInvoiceModal
+                    quote={quote}
+                    companyId={companyId}
+                    onClose={() => setShowInvoiceModal(false)}
+                />
+            )}
         </div>
     );
 };
