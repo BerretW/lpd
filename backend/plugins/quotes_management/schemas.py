@@ -8,6 +8,7 @@ from datetime import datetime
 class QuoteCategoryAssemblyIn(BaseModel):
     category_name: str
     assembly_price_per_unit: float = 0.0
+    vat_rate: float = 21.0
 
 
 class QuoteCategoryAssemblyOut(BaseModel):
@@ -15,6 +16,7 @@ class QuoteCategoryAssemblyOut(BaseModel):
     quote_id: int
     category_name: str
     assembly_price_per_unit: float
+    vat_rate: float = 21.0
     model_config = ConfigDict(from_attributes=True)
 
 

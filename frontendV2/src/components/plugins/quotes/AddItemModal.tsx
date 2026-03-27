@@ -21,19 +21,16 @@ const AddItemModal: React.FC<{
 
     const set = (k: keyof QuoteItem, v: any) => setForm(f => ({ ...f, [k]: v }));
 
-    const handleSelectInventory = (item: any) => {
+    const handleSelectInventory = (item: any, categoryName: string | undefined) => {
+        const ca = categoryName ? categoryAssemblies.find(c => c.category_name === categoryName) : undefined;
         setForm(f => ({
             ...f,
             name: item.name,
             material_price: item.price ?? 0,
             inventory_item_id: item.id,
-            inventory_category_name: item.categories?.[0]?.name ?? undefined,
+            inventory_category_name: categoryName,
+            assembly_price: ca?.assembly_price_per_unit ?? f.assembly_price,
         }));
-        const cat = item.categories?.[0]?.name;
-        if (cat) {
-            const ca = categoryAssemblies.find(c => c.category_name === cat);
-            if (ca) setForm(f => ({ ...f, assembly_price: ca.assembly_price_per_unit }));
-        }
         setShowPicker(false);
     };
 

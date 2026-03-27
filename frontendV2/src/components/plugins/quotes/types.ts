@@ -27,6 +27,7 @@ export interface CategoryAssembly {
     quote_id: number;
     category_name: string;
     assembly_price_per_unit: number;
+    vat_rate: number;
 }
 
 export interface Quote {

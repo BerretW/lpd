@@ -100,5 +100,6 @@ class QuoteCategoryAssembly(Base):
     quote_id: Mapped[int] = mapped_column(ForeignKey("plugin_quotes.id", ondelete="CASCADE"), index=True)
     category_name: Mapped[str] = mapped_column(String(200))
     assembly_price_per_unit: Mapped[float] = mapped_column(Float, default=0.0)
+    vat_rate: Mapped[float] = mapped_column(Float, default=21.0)
 
     quote: Mapped["Quote"] = relationship(back_populates="category_assemblies")

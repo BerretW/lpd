@@ -34,7 +34,7 @@ const CenotvorbaTab: React.FC<{
             const existing = new Set(prev.map(a => a.category_name));
             const newEntries = usedCategories
                 .filter(c => !existing.has(c))
-                .map(c => ({ id: -Date.now() - Math.random(), quote_id: quote.id, category_name: c, assembly_price_per_unit: quote.global_hourly_rate }));
+                .map(c => ({ id: -Date.now() - Math.random(), quote_id: quote.id, category_name: c, assembly_price_per_unit: quote.global_hourly_rate, vat_rate: pricing.vat_rate }));
             return [...prev, ...newEntries];
         });
     }, [usedCategories.join(',')]);
@@ -45,7 +45,7 @@ const CenotvorbaTab: React.FC<{
         setSaving(true);
         try {
             await quotesApi.updateQuote(companyId, quote.id, form);
-            const cleanAssemblies = assemblies.map(({ category_name, assembly_price_per_unit }) => ({ category_name, assembly_price_per_unit }));
+            const cleanAssemblies = assemblies.map(({ category_name, assembly_price_per_unit, vat_rate }) => ({ category_name, assembly_price_per_unit, vat_rate }));
             await quotesApi.upsertCategoryAssemblies(companyId, quote.id, cleanAssemblies);
 
             const updatePromises: Promise<any>[] = [];
@@ -137,10 +137,10 @@ const CenotvorbaTab: React.FC<{
             </div>
 
             <div>
-                <h3 className="font-semibold text-slate-700 mb-1">Cena montáže dle kategorie</h3>
+                <h3 className="font-semibold text-slate-700 mb-1">Sazby dle kategorie</h3>
                 <p className="text-xs text-slate-500 mb-3">
                     Jakmile přidáte položky ze skladu s kategorií, systém automaticky přidá kategorii sem.
-                    Nastavte paušální cenu montáže za 1 ks pro každou kategorii.
+                    Nastavte paušální cenu montáže a sazbu DPH za 1 ks pro každou kategorii.
                 </p>
                 {assemblies.length === 0 ? (
                     <p className="text-sm text-slate-400 italic">Žádné kategorie zatím. Přidejte položky ze skladu.</p>
@@ -150,7 +150,8 @@ const CenotvorbaTab: React.FC<{
                             <thead className="bg-slate-100">
                                 <tr>
                                     <th className="text-left px-4 py-2 text-xs font-semibold text-slate-600">Kategorie</th>
-                                    <th className="text-right px-4 py-2 text-xs font-semibold text-slate-600">Montáž / ks (Kč)</th>
+                                    <th className="text-right px-4 py-2 text-xs font-semibold text-slate-600 w-36">Montáž / ks (Kč)</th>
+                                    <th className="text-right px-4 py-2 text-xs font-semibold text-slate-600 w-28">DPH (%)</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -166,6 +167,15 @@ const CenotvorbaTab: React.FC<{
                                                     setAssemblies(prev => prev.map(x => x.id === a.id ? { ...x, assembly_price_per_unit: val } : x));
                                                 }} />
                                         </td>
+                                        <td className="px-4 py-2">
+                                            <input type="number" min="0" max="100" step="1" disabled={!!parentQuote}
+                                                className="w-20 ml-auto block border border-slate-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-slate-100 disabled:text-slate-400"
+                                                value={a.vat_rate}
+                                                onChange={e => {
+                                                    const val = parseFloat(e.target.value) || 0;
+                                                    setAssemblies(prev => prev.map(x => x.id === a.id ? { ...x, vat_rate: val } : x));
+                                                }} />
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -176,7 +186,7 @@ const CenotvorbaTab: React.FC<{
                     <div className="mt-2">
                         <button
                             className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                            onClick={() => setAssemblies(prev => [...prev, { id: -Date.now(), quote_id: quote.id, category_name: 'Nová kategorie', assembly_price_per_unit: 0 }])}>
+                            onClick={() => setAssemblies(prev => [...prev, { id: -Date.now(), quote_id: quote.id, category_name: 'Nová kategorie', assembly_price_per_unit: 0, vat_rate: pricing.vat_rate }])}>
                             <Icon name="fa-plus" className="text-xs" /> Přidat kategorii ručně
                         </button>
                     </div>
