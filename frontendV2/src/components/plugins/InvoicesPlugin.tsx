@@ -22,6 +22,7 @@ const InvoicesPlugin: React.FC<InvoicesPluginProps> = ({ companyId }) => {
     const [filterStatus, setFilterStatus] = useState<string>('');
     const [filterText, setFilterText] = useState('');
     const [updatingId, setUpdatingId] = useState<number | null>(null);
+    const [selectedInvoice, setSelectedInvoice] = useState<InvoiceOut | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -138,7 +139,7 @@ const InvoicesPlugin: React.FC<InvoicesPluginProps> = ({ companyId }) => {
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
                             {filtered.map(inv => (
-                                <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                                <tr key={inv.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setSelectedInvoice(inv)}>
                                     <td className="px-4 py-3 font-mono font-medium text-slate-800">
                                         {inv.invoice_number}
                                     </td>
@@ -184,6 +185,134 @@ const InvoicesPlugin: React.FC<InvoicesPluginProps> = ({ companyId }) => {
                     </table>
                 </div>
             )}
+
+            {selectedInvoice && (
+                <InvoiceDetailModal
+                    invoice={selectedInvoice}
+                    onClose={() => setSelectedInvoice(null)}
+                />
+            )}
+        </div>
+    );
+};
+
+const InvoiceDetailModal: React.FC<{ invoice: InvoiceOut; onClose: () => void }> = ({ invoice, onClose }) => {
+    const fmt = (n: number) => n.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const handlePrint = () => {
+        const area = document.getElementById('invoice-detail-print');
+        if (!area) return;
+        const win = window.open('', '_blank');
+        win?.document.write('<html><head><title>Faktura ' + invoice.invoice_number + '</title>');
+        win?.document.write('<script src="https://cdn.tailwindcss.com"></script>');
+        win?.document.write('<style>@media print { .no-print { display: none !important; } }</style>');
+        win?.document.write('</head><body>');
+        win?.document.write(area.innerHTML);
+        win?.document.write('</body></html>');
+        win?.document.close();
+        setTimeout(() => { win?.print(); win?.close(); }, 500);
+    };
+
+    const source = invoice.quote_name
+        ? `Nabídka: ${invoice.quote_name}`
+        : invoice.work_order_name
+        ? `Zakázka: ${invoice.work_order_name}`
+        : '—';
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <header className="flex justify-between items-center px-6 py-4 border-b bg-slate-800 text-white rounded-t-lg no-print">
+                    <h2 className="text-lg font-semibold">Faktura {invoice.invoice_number}</h2>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={handlePrint}
+                            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                        >
+                            <Icon name="fa-print" /> Tisk
+                        </button>
+                        <button onClick={onClose} className="text-gray-400 hover:text-white">
+                            <Icon name="fa-times" className="text-xl" />
+                        </button>
+                    </div>
+                </header>
+
+                <main className="overflow-y-auto p-6 bg-slate-100">
+                    <div id="invoice-detail-print" className="bg-white rounded-lg p-8 shadow text-slate-800 text-sm space-y-6">
+                        <div className="flex justify-between items-start">
+                            <h1 className="text-3xl font-bold text-slate-800">Faktura</h1>
+                            <div className="text-right">
+                                <p className="font-bold text-base">{invoice.invoice_number}</p>
+                                <p className="text-slate-500">VS: {invoice.variable_symbol}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-6 border-t border-b border-slate-200 py-4">
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400 mb-1">Zákazník</p>
+                                <p className="font-semibold">{invoice.customer_name ?? '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400 mb-1">Zdroj</p>
+                                <p>{source}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-4">
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400 mb-1">Datum vystavení</p>
+                                <p>{invoice.issue_date}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400 mb-1">DUZP</p>
+                                <p>{invoice.duzp}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400 mb-1">Datum splatnosti</p>
+                                <p className={new Date(invoice.due_date) < new Date() && invoice.status !== 'paid' && invoice.status !== 'cancelled' ? 'text-red-600 font-medium' : ''}>
+                                    {invoice.due_date}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400 mb-1">Způsob úhrady</p>
+                                <p>{invoice.payment_method}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400 mb-1">Stav</p>
+                                <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${INVOICE_STATUS_COLORS[invoice.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                    {INVOICE_STATUS_LABELS[invoice.status] ?? invoice.status}
+                                </span>
+                            </div>
+                        </div>
+
+                        {invoice.note && (
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400 mb-1">Poznámka</p>
+                                <p className="text-slate-600">{invoice.note}</p>
+                            </div>
+                        )}
+
+                        <div className="border-t border-slate-200 pt-4">
+                            <table className="w-full text-sm">
+                                <tbody>
+                                    <tr>
+                                        <td className="py-1 text-slate-500">Základ daně (bez DPH):</td>
+                                        <td className="text-right">{fmt(invoice.total_net)} Kč</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-1 text-slate-500 border-b border-slate-200 pb-3">DPH:</td>
+                                        <td className="text-right border-b border-slate-200 pb-3">{fmt(invoice.total_vat)} Kč</td>
+                                    </tr>
+                                    <tr className="text-base font-bold">
+                                        <td className="pt-3">Celkem k úhradě:</td>
+                                        <td className="text-right pt-3">{fmt(invoice.total_gross)} Kč</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </main>
+            </div>
         </div>
     );
 };
