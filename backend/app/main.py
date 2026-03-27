@@ -116,6 +116,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE plugin_obj_tech_elements ADD COLUMN IF NOT EXISTS is_main BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS object_id INTEGER REFERENCES plugin_obj_sites(id) ON DELETE SET NULL",
             "ALTER TABLE plugin_quotes ADD COLUMN IF NOT EXISTS parent_quote_id INTEGER REFERENCES plugin_quotes(id) ON DELETE SET NULL",
+            "ALTER TABLE plugin_quotes ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
             # service_reports tabulka se vytvoří přes create_all, tady jen pro jistotu indexy
         ]
         for sql in _migrations:

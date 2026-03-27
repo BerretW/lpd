@@ -5,7 +5,7 @@ import Icon from '../../common/Icon';
 import * as api from '../../../api';
 import * as quotesApi from '../../../api/quotes';
 import { Quote } from './types';
-import { STATUS_LABELS, printQuotePdf } from './utils';
+import { STATUS_LABELS, printQuotePdf, computeQuoteRef } from './utils';
 import SummaryBar from './SummaryBar';
 import CenotvorbaTab from './CenotvorbaTab';
 import SectionTab from './SectionTab';
@@ -134,6 +134,9 @@ const QuoteDetail: React.FC<{
                     <p className="text-sm text-slate-500 mt-0.5">
                         {quote.customer_name && <><Icon name="fa-user" className="mr-1" />{quote.customer_name} · </>}
                         Platnost: {quote.validity_days} dní
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5 font-mono">
+                        <Icon name="fa-hashtag" className="mr-1" />{computeQuoteRef(quote)}
                     </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">

@@ -1,5 +1,45 @@
 import { Quote } from './types';
 
+// ─── Tech Bits ────────────────────────────────────────────────────────────────
+// Každá technologie = jeden bit v hexadecimálním ID nabídky.
+// Pořadí odpovídá seed_technologies.sql.
+
+export const TECH_BITS: Record<string, number> = {
+    'CCTV':         0x001,  // bit 0
+    'PZTS':         0x002,  // bit 1
+    'EKV':          0x004,  // bit 2
+    'MZS':          0x008,  // bit 3
+    'DT':           0x010,  // bit 4
+    'SK':           0x020,  // bit 5
+    'PV':           0x040,  // bit 6
+    'ID':           0x080,  // bit 7
+    'DOMÁCÍ TEL.':  0x100,  // bit 8
+};
+
+/**
+ * Sestaví referenční kód nabídky:
+ * {customerId}/{siteId}-v{version}-{techHex}
+ *
+ * techHex = hex maska technologií odvozená z prefixů sekcí.
+ * Příklad: zákazník 42, objekt 15, verze 2, CCTV+DT → 42/15-v2-11
+ */
+export function computeQuoteRef(quote: Quote): string {
+    const custId = quote.customer_id ?? 0;
+    const siteId = quote.site_id ?? 0;
+    const version = quote.version ?? 1;
+
+    let techMask = 0;
+    for (const section of quote.sections ?? []) {
+        const key = (section.prefix ?? section.name).toUpperCase().trim();
+        if (TECH_BITS[key] !== undefined) {
+            techMask |= TECH_BITS[key];
+        }
+    }
+
+    const techHex = techMask === 0 ? '00' : techMask.toString(16).toUpperCase().padStart(2, '0');
+    return `${custId}/${siteId}-v${version}-${techHex}`;
+}
+
 export const STATUS_LABELS: Record<string, { label: string; color: string }> = {
     draft: { label: 'Koncept', color: 'bg-slate-200 text-slate-700' },
     sent: { label: 'Odesláno', color: 'bg-blue-100 text-blue-700' },

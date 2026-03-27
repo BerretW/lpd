@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 import io
 
 from app.db.database import get_db
@@ -82,7 +82,19 @@ async def create_quote(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_company_access),
 ):
-    q = Quote(company_id=company_id, **body.model_dump())
+    # Auto-verze: počet hlavních nabídek pro tento site/customer + 1
+    if not body.parent_quote_id:
+        version_stmt = select(func.count(Quote.id)).where(
+            Quote.company_id == company_id,
+            Quote.site_id == body.site_id,
+            Quote.customer_id == body.customer_id,
+            Quote.parent_quote_id.is_(None),
+        )
+        existing_count = (await db.execute(version_stmt)).scalar() or 0
+        version = existing_count + 1
+    else:
+        version = 1
+    q = Quote(company_id=company_id, version=version, **body.model_dump())
     db.add(q)
     await db.commit()
     await db.refresh(q)

@@ -126,6 +126,7 @@ class QuoteListOut(BaseModel):
     site_id: Optional[int] = None
     parent_quote_id: Optional[int] = None
     name: str
+    version: int = 1
     status: str
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None
@@ -140,6 +141,7 @@ class QuoteOut(BaseModel):
     site_id: Optional[int] = None
     parent_quote_id: Optional[int] = None
     name: str
+    version: int = 1
     status: str
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None

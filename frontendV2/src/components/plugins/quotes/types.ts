@@ -35,6 +35,7 @@ export interface Quote {
     site_id?: number;
     parent_quote_id?: number;
     name: string;
+    version: number;
     status: string;
     customer_id?: number;
     customer_name?: string;

@@ -19,6 +19,7 @@ class Quote(Base):
     parent_quote_id: Mapped[Optional[int]] = mapped_column(ForeignKey("plugin_quotes.id", ondelete="SET NULL"), index=True)
 
     name: Mapped[str] = mapped_column(String(300))
+    version: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String(30), default="draft")  # draft, sent, accepted, rejected
     customer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"))
 
