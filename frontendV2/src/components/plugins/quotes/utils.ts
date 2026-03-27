@@ -50,7 +50,7 @@ export const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 export const fmtPrice = (v: number) =>
     v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
 
-export function printQuotePdf(quote: Quote, companyName: string) {
+export function printQuotePdf(quote: Quote, companyName: string, quoteRef?: string) {
     const fmtP = (v: number) =>
         v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
 
@@ -125,6 +125,14 @@ export function printQuotePdf(quote: Quote, companyName: string) {
         <td style="text-align:right;font-size:9px;color:#666">www.lpdweb.cz • info@lpdweb.cz</td>
     </tr></table>
     <div class="hdr">ZABEZPEČOVACÍ, POŽÁRNÍ, KAMEROVÉ, PŘÍSTUPOVÉ SYSTÉMY A ELEKTROINSTALACE</div>
+    ${quoteRef ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px 0;border-bottom:2px solid #cc0000;padding-bottom:6px">
+        <div style="font-size:18px;font-weight:900;color:#1a1a1a;letter-spacing:0.5px">${quote.name}</div>
+        <div style="text-align:right">
+            <div style="font-size:8px;color:#999;text-transform:uppercase;letter-spacing:1px">Č. nabídky</div>
+            <div style="font-size:16px;font-weight:900;color:#cc0000;font-family:monospace;letter-spacing:1px">${quoteRef}</div>
+        </div>
+    </div>` : ''}
     <table class="meta">
         <tr><td>Název zakázky:</td><td><b>${quote.name}</b></td></tr>
         <tr><td>Zákazník:</td><td>${quote.customer_name || ''}</td></tr>

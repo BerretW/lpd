@@ -64,11 +64,12 @@ const QuoteDetail: React.FC<{
 
     const handleExportPdf = async () => {
         if (!quote) return;
+        const ref = computeQuoteRef(quote);
         try {
             const company = await api.getCompany(companyId);
-            printQuotePdf(quote, company.name);
+            printQuotePdf(quote, company.name, ref);
         } catch {
-            printQuotePdf(quote, '');
+            printQuotePdf(quote, '', ref);
         }
     };
 
